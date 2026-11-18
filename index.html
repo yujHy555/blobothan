@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Blobothan — Glowgrove Pinball Odyssey</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #05070f; font-family: 'Segoe UI', system-ui, sans-serif; }
+      #game { position: absolute; inset: 0; }
+      #transition {
+        position: absolute; inset: 0; background: #05070f; opacity: 0;
+        pointer-events: none; transition: opacity 0.16s ease-in-out; z-index: 40;
+      }
+      #transition.active { opacity: 1; }
+      /* AAA performance monitor — top-right, glassy HUD */
+      #fps {
+        position: absolute; top: 14px; right: 350px; z-index: 22;
+        display: flex; align-items: center; gap: 9px;
+        padding: 7px 13px 7px 10px; border-radius: 10px;
+        background: rgba(6,12,24,0.62); border: 1px solid rgba(127,255,212,0.28);
+        backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+        font: 700 12px/1 ui-monospace, 'SF Mono', Consolas, monospace;
+        color: #cfe9df; letter-spacing: 0.08em; pointer-events: none;
+      }
+      #fps .led { width: 8px; height: 8px; border-radius: 50%; background: #2de0b0; box-shadow: 0 0 10px #2de0b0; }
+      #fps .num { font-size: 19px; font-weight: 800; color: #7fffd4; min-width: 38px; text-align: right; text-shadow: 0 0 12px rgba(127,255,212,0.5); }
+      #fps .unit { color: #7fa99a; }
+      #fps.warn .led { background: #ffd45b; box-shadow: 0 0 10px #ffd45b; }
+      #fps.warn .num { color: #ffd45b; }
+      #fps.bad .led { background: #ff5f6f; box-shadow: 0 0 10px #ff5f6f; }
+      #fps.bad .num { color: #ff8f9a; }
+      #fps canvas { width: 56px; height: 22px; display: block; opacity: 0.85; }
+      #babylon { width: 100%; height: 100%; display: block; touch-action: none; }
+      #pixi { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+      #hud {
+        position: absolute; inset: 0; pointer-events: none; color: #eaf6ff;
+        font-weight: 700; letter-spacing: 0.05em; text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+      }
+      /* Holographic control diagrams */
+      .holo {
+        position: absolute; bottom: 18px; opacity: 0.72; filter: drop-shadow(0 0 10px rgba(127,255,212,0.4));
+        animation: holoFloat 4s ease-in-out infinite; pointer-events: none;
+      }
+      .holo svg { display: block; }
+      #holo-pad { right: 18px; }
+      #holo-keys { left: 18px; animation-delay: -2s; }
+      .holo-label {
+        position: absolute; bottom: -14px; width: 100%; text-align: center;
+        font-family: 'Fredoka', sans-serif; font-weight: 700;
+        font-size: 14px; letter-spacing: 0.12em; color: #7fffd4; text-transform: uppercase;
+        text-shadow: 0 0 10px rgba(127,255,212,0.8);
+      }
+      @keyframes holoFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+      @media (max-width: 760px) { .holo { display: none; } }
+      .hud-top { display: flex; justify-content: space-between; align-items: flex-start; padding: 1.2rem 1.6rem; }
+      .hud-stat { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.35rem; font-size: 1.05rem; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: #7fffd4; box-shadow: 0 0 12px #7fffd4, 0 0 4px #fff inset; }
+      .dot.pink { background: #ff7fc8; box-shadow: 0 0 12px #ff7fc8; }
+      .dot.gold { background: #ffd86b; box-shadow: 0 0 12px #ffd86b; }
+      #world-name { font-size: 1.4rem; color: #7fffd4; text-align: right; text-shadow: 0 0 18px rgba(127,255,212,0.5); }
+      #realm-sub { font-size: 0.75rem; color: #9fb6c9; font-weight: 500; letter-spacing: 0.15em; text-transform: uppercase; }
+      .overlay {
+        position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+        background: radial-gradient(circle at 50% 40%, rgba(20,40,60,0.7), rgba(5,7,15,0.92));
+        backdrop-filter: blur(8px); pointer-events: auto; text-align: center; z-index: 10;
+      }
+      .overlay.visible { display: flex; }
+      /* Fullscreen white logo artwork as the menu background */
+      #title {
+        background: #ffffff url('/Blobothan_game_logo_design_841106e9_2K.jpg') center 18% / cover no-repeat;
+        backdrop-filter: none;
+      }
+      #title::before, #title::after { display: none; } /* no dark orbs over the white art */
+      #title > * { position: relative; z-index: 2; }
+      #title .hud-stat, #title .holo { display: none; }
+      /* Push controls to the bottom over the white area of the artwork */
+      /* Lift the controls clear of the always-on audio bar */
+      #title .hint {
+        margin-top: auto; margin-bottom: 4.2rem; font-size: 1.15rem; line-height: 1.9;
+        background: rgba(255,255,255,0.72); border-radius: 18px;
+        padding: 0.7rem 1.4rem; backdrop-filter: blur(4px);
+      }
+      /* All menu text recolored to pop on the white background */
+      #title p { color: #4a2066 !important; font-weight: 700; text-shadow: 0 1px 0 #fff, 0 2px 8px rgba(255,255,255,0.9); }
+      #title .hint { color: #3a1a52 !important; text-shadow: 0 1px 0 #fff !important; }
+      #title kbd {
+        color: #5a1e7a !important; border-color: #b06fd0 !important;
+        background: rgba(255,255,255,0.85);
+        box-shadow: 0 2px 6px rgba(90,30,122,0.25), inset 0 0 4px rgba(176,111,208,0.2);
+      }
+      #title .btn { box-shadow: 0 8px 24px rgba(90,30,122,0.3), inset 0 1px 0 rgba(255,255,255,0.8); }
+      #title-logo { display: none; } /* logo is baked into the fullscreen background */
+      .overlay h1 {
+        font-family: 'Fredoka', 'Comic Sans MS', cursive;
+        font-size: 4.2rem; font-weight: 700; letter-spacing: 0.04em; margin-bottom: 0.2rem; line-height: 1.05;
+      }
+      .overlay p, .hint, .hud { font-family: 'Fredoka', 'Segoe UI', sans-serif; font-weight: 500; }
+      .btn { font-family: 'Fredoka', 'Segoe UI', sans-serif; letter-spacing: 0.06em; }
+      .overlay h1.glow {
+        color: #ff6fb5;
+        -webkit-text-stroke: 3px #2a0e3a;
+        text-shadow: 0 5px 0 #7a2a6a, 0 9px 22px rgba(255,111,181,0.7), 0 0 40px rgba(127,255,212,0.35);
+        animation: titleReveal 1.1s cubic-bezier(0.2,0.9,0.2,1.2) both, titleBounce 2.2s ease-in-out 1.1s infinite;
+      }
+      @keyframes titleReveal {
+        0%   { opacity: 0; transform: scale(0.2) rotate(-25deg) translateY(-60px); filter: blur(14px) brightness(3); letter-spacing: 0.6em; }
+        30%  { opacity: 1; transform: scale(1.18) rotate(6deg) translateY(10px); filter: blur(2px) brightness(2); letter-spacing: 0.14em; }
+        50%  { transform: scale(0.94) rotate(-4deg); filter: blur(0) brightness(1.4); letter-spacing: 0.05em; }
+        70%  { transform: scale(1.05) skewX(12deg); filter: none; letter-spacing: 0.04em; }
+        85%  { transform: scale(0.98) skewX(-6deg); }
+        100% { transform: scale(1) rotate(-2deg); letter-spacing: 0.04em; filter: none; }
+      }
+      @keyframes titleBounce {
+        0%,100% { transform: translateY(0) rotate(-2deg) scale(1); }
+        50% { transform: translateY(-14px) rotate(2deg) scale(1.05); }
+      }
+      /* Staggered letter entrance for the subtitle */
+      .overlay h1.glow .letter { display: inline-block; animation: letterPop 0.5s cubic-bezier(0.2,1.4,0.4,1) both; }
+      @keyframes letterPop {
+        0% { opacity: 0; transform: translateY(30px) rotate(20deg) scale(0.4); }
+        100% { opacity: 1; transform: none; }
+      }
+      .overlay h1.bad {
+        font-family: 'Fredoka', cursive;
+        color: #ff7f9e; -webkit-text-stroke: 2px #2a0e3a;
+        text-shadow: 0 4px 0 #6a1a2a, 0 0 28px rgba(255,127,158,0.5);
+      }
+      /* Floating disco orbs behind menus */
+      .overlay::before, .overlay::after {
+        content: ''; position: absolute; border-radius: 50%; pointer-events: none;
+        filter: blur(2px); mix-blend-mode: screen;
+      }
+      .overlay::before {
+        width: 240px; height: 240px; top: 8%; left: 12%;
+        background: radial-gradient(circle, rgba(127,255,212,0.22), transparent 70%);
+        animation: orb1 9s ease-in-out infinite;
+      }
+      .overlay::after {
+        width: 300px; height: 300px; bottom: 6%; right: 10%;
+        background: radial-gradient(circle, rgba(255,127,200,0.22), transparent 70%);
+        animation: orb2 11s ease-in-out infinite;
+      }
+      @keyframes orb1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(60px,40px) scale(1.25); } }
+      @keyframes orb2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-70px,-30px) scale(1.2); } }
+      .btn { animation: btnPulse 2.4s ease-in-out infinite; }
+      @keyframes btnPulse {
+        0%,100% { box-shadow: 0 8px 30px rgba(79,214,176,0.4), inset 0 1px 0 rgba(255,255,255,0.6); }
+        50% { box-shadow: 0 10px 44px rgba(127,255,212,0.7), inset 0 1px 0 rgba(255,255,255,0.8); transform: translateY(-2px) scale(1.03); }
+      }
+      .overlay p { color: #bcd0e0; font-size: 1.35rem; margin: 0.6rem 0 1.8rem; max-width: 700px; line-height: 1.5; }
+      .btn {
+        padding: 1.1rem 2.8rem; font-size: 1.5rem; font-weight: 800; color: #05121a;
+        background: linear-gradient(180deg, #9fffe0, #4fd6b0); border: none; border-radius: 999px;
+        cursor: pointer; box-shadow: 0 8px 30px rgba(79,214,176,0.4), inset 0 1px 0 rgba(255,255,255,0.6);
+        transition: transform 0.1s, box-shadow 0.1s;
+      }
+      .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 38px rgba(79,214,176,0.55); }
+      .btn:active { transform: scale(0.95); }
+      .hint { margin-top: 1.6rem; color: #cfe4f2; font-size: 1.45rem; line-height: 2.2; font-weight: 600; text-shadow: 0 2px 12px rgba(0,0,0,0.95); }
+      kbd { display: inline-block; padding: 0.3rem 0.85rem; border: 2px solid #7fffd4; border-bottom-width: 3px; border-radius: 8px; margin: 0 0.25rem; color: #eafff8; font-size: 1.3rem; font-family: inherit; box-shadow: 0 0 14px rgba(127,255,212,0.35), inset 0 0 8px rgba(127,255,212,0.12); }
+      #loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #05070f; color: #7fffd4; font-weight: 700; z-index: 30; gap: 1rem; }
+      #loading .bar { width: 280px; height: 8px; background: #121a28; border-radius: 4px; overflow: hidden; }
+      #loading .fill { width: 0%; height: 100%; background: linear-gradient(90deg, #4fd6b0, #9fffe0); transition: width 0.25s; }
+      #error { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(5,7,15,0.95); z-index: 40; text-align: center; color: #ff8fa8; padding: 2rem; }
+      #error-msg { color: #bcd0e0; font-family: ui-monospace, monospace; font-size: 0.9rem; max-width: 620px; margin: 1rem 0; line-height: 1.5; }
+      /* Customization screen */
+      #customize { display: none; position: absolute; inset: 0; z-index: 25; background: radial-gradient(circle at 50% 30%, rgba(30,20,50,0.92), rgba(5,7,15,0.97)); backdrop-filter: blur(10px); flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; color: #fff; }
+      #customize.visible { display: flex; }
+      #customize h2 { font-family: 'Fredoka', cursive; font-size: 2.8rem; color: #ff9fd0; text-shadow: 0 0 24px rgba(255,111,181,0.6); margin-bottom: 0.3rem; }
+      #customize .sub { font-family: 'Fredoka', sans-serif; color: #9fb6c9; font-size: 1.1rem; margin-bottom: 1.4rem; }
+      .cust-tabs { display: flex; gap: 0.7rem; margin-bottom: 1.2rem; }
+      .cust-tab { font-family: 'Fredoka', sans-serif; font-size: 1.1rem; padding: 0.5rem 1.2rem; border: 2px solid rgba(127,255,212,0.4); border-radius: 999px; background: rgba(127,255,212,0.06); color: #cfe4f2; cursor: pointer; transition: all 0.15s; }
+      .cust-tab.active { background: #7fffd4; color: #05121a; border-color: #7fffd4; box-shadow: 0 0 18px rgba(127,255,212,0.5); font-weight: 700; }
+      .cust-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.9rem; max-width: 720px; margin-bottom: 1.6rem; }
+      .cust-item { width: 140px; padding: 1rem 0.5rem; border-radius: 16px; border: 2px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); text-align: center; cursor: pointer; transition: all 0.15s; }
+      .cust-item:hover { transform: translateY(-4px); border-color: #7fffd4; }
+      .cust-item.equipped { border-color: #ff9fd0; background: rgba(255,127,200,0.15); box-shadow: 0 0 20px rgba(255,127,200,0.4); }
+      .cust-item .ico { font-size: 2.4rem; display: block; margin-bottom: 0.4rem; }
+      .cust-item .nm { font-family: 'Fredoka', sans-serif; font-size: 0.95rem; color: #eaf6ff; }
+      .cust-btns { display: flex; gap: 1rem; }
+      .cust-btns .btn { font-size: 1.1rem; padding: 0.7rem 1.6rem; }
+      #mobile-controls { position: absolute; inset: 0; pointer-events: none; display: none; }
+      .pad { position: absolute; bottom: 24px; width: 90px; height: 90px; border-radius: 50%; background: rgba(127,255,212,0.12); border: 2px solid rgba(127,255,212,0.5); pointer-events: auto; display: flex; align-items: center; justify-content: center; color: #7fffd4; font-size: 1.6rem; user-select: none; touch-action: none; }
+      #pad-left { left: 24px; } #pad-right { left: 128px; } #pad-jump { right: 24px; width: 120px; height: 120px; background: rgba(255,127,200,0.12); border-color: rgba(255,127,200,0.55); color: #ff9fd0; }
+      /* Always-on audio controls */
+      #audio-controls {
+        position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+        display: flex; gap: 10px; pointer-events: auto; z-index: 20;
+      }
+      .audio-btn {
+        font: 700 0.78rem/1 'Trebuchet MS', sans-serif; letter-spacing: 1px;
+        color: #7fffd4; background: rgba(10, 30, 28, 0.78);
+        border: 1.5px solid rgba(127, 255, 212, 0.65); border-radius: 999px;
+        padding: 9px 18px; cursor: pointer; user-select: none;
+        box-shadow: 0 0 14px rgba(127, 255, 212, 0.25); backdrop-filter: blur(6px);
+        transition: transform 0.12s, box-shadow 0.12s, color 0.12s;
+      }
+      .audio-btn:hover { transform: translateY(-2px); box-shadow: 0 0 22px rgba(127, 255, 212, 0.55); }
+      .audio-btn.muted { color: #ff9fd0; border-color: rgba(255, 127, 200, 0.7); box-shadow: 0 0 14px rgba(255, 127, 200, 0.25); }
+      .audio-btn.play { color: #ffe27a; border-color: rgba(255, 226, 122, 0.7); }
+    </style>
+  </head>
+  <body>
+    <div id="game">
+      <canvas id="babylon"></canvas>
+      <canvas id="pixi"></canvas>
+      <div id="transition"></div>
+      <div id="fps">
+        <span class="led"></span>
+        <div>
+          <div style="display:flex;align-items:baseline;gap:3px">
+            <span class="num" id="fps-num">60</span><span class="unit">FPS</span>
+          </div>
+          <canvas id="fps-graph" width="112" height="44"></canvas>
+        </div>
+      </div>
+      <div id="hud">
+        <div class="hud-top">
+          <div>
+            <div class="hud-stat"><span class="dot"></span><span id="stat-spores">0</span> <span id="label-spores">Sporelights</span></div>
+            <div class="hud-stat"><span class="dot gold"></span><span id="stat-bumpers">0</span> <span id="label-bumpers">Bumper Hits</span></div>
+            <div class="hud-stat"><span class="dot pink"></span><span id="stat-rabbits">0</span> <span id="label-rabbits">Rabbits Flattened</span></div>
+          </div>
+          <div>
+            <div id="world-name">Glowgrove</div>
+            <div id="realm-sub">Realm I · Verdant Drift</div>
+          </div>
+        </div>
+
+        <!-- Always-on audio controls (never hidden) -->
+        <div id="audio-controls">
+          <button class="audio-btn play" id="audio-play" title="Resume / play audio">▶ PLAY AUDIO</button>
+          <button class="audio-btn" id="audio-mute" title="Toggle sound">🔊 SOUND ON</button>
+        </div>
+
+        <!-- Holographic gamepad diagram (right) -->
+        <div class="holo" id="holo-pad">
+          <svg width="240" height="189" viewBox="0 0 150 118" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="padG" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#7fffd4" stop-opacity="0.35"/>
+                <stop offset="1" stop-color="#7fffd4" stop-opacity="0.05"/>
+              </linearGradient>
+            </defs>
+            <rect x="18" y="24" width="114" height="70" rx="34" fill="url(#padG)" stroke="#7fffd4" stroke-width="1.5"/>
+            <rect x="34" y="50" width="20" height="6" rx="2" fill="#7fffd4" opacity="0.8"/>
+            <rect x="41" y="43" width="6" height="20" rx="2" fill="#7fffd4" opacity="0.8"/>
+            <circle cx="108" cy="44" r="6" stroke="#ff7fd0" stroke-width="1.5" fill="#ff7fd0" fill-opacity="0.25"/>
+            <circle cx="120" cy="55" r="6" stroke="#ff7fd0" stroke-width="1.5" fill="#ff7fd0" fill-opacity="0.25"/>
+            <circle cx="96" cy="55" r="6" stroke="#ff7fd0" stroke-width="1.5" fill="#ff7fd0" fill-opacity="0.25"/>
+            <circle cx="108" cy="66" r="6" stroke="#ff7fd0" stroke-width="1.5" fill="#ff7fd0" fill-opacity="0.25"/>
+            <circle cx="56" cy="72" r="9" stroke="#7fffd4" stroke-width="1.5" fill="#7fffd4" fill-opacity="0.15"/>
+            <circle cx="88" cy="72" r="9" stroke="#7fffd4" stroke-width="1.5" fill="#7fffd4" fill-opacity="0.15"/>
+            <rect x="34" y="18" width="26" height="7" rx="3" stroke="#ffd86b" stroke-width="1.5" fill="none"/>
+            <rect x="90" y="18" width="26" height="7" rx="3" stroke="#ffd86b" stroke-width="1.5" fill="none"/>
+          </svg>
+          <div class="holo-label">A jump · A again TRICK · X dash · Y hand plant · LB/RB spin · B grab</div>
+        </div>
+
+        <!-- Holographic keyboard diagram (bottom-left) -->
+        <div class="holo" id="holo-keys">
+          <svg width="288" height="154" viewBox="0 0 180 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="14" width="168" height="68" rx="8" fill="#7fffd4" fill-opacity="0.06" stroke="#7fffd4" stroke-width="1.2"/>
+            <g stroke="#7fffd4" stroke-width="1.2" fill="#7fffd4" fill-opacity="0.15">
+              <rect x="40" y="44" width="20" height="18" rx="3"/>
+              <rect x="62" y="62" width="20" height="18" rx="3"/>
+              <rect x="18" y="62" width="20" height="18" rx="3"/>
+              <rect x="40" y="62" width="20" height="18" rx="3"/>
+              <rect x="118" y="44" width="16" height="14" rx="3"/>
+              <rect x="100" y="62" width="16" height="14" rx="3"/>
+              <rect x="118" y="62" width="16" height="14" rx="3"/>
+              <rect x="136" y="62" width="16" height="14" rx="3"/>
+            </g>
+            <text x="50" y="56" fill="#eaf6ff" font-size="9" font-family="sans-serif">W</text>
+            <text x="28" y="74" fill="#eaf6ff" font-size="9" font-family="sans-serif">A</text>
+            <text x="50" y="74" fill="#eaf6ff" font-size="9" font-family="sans-serif">S</text>
+            <text x="72" y="74" fill="#eaf6ff" font-size="9" font-family="sans-serif">D</text>
+          </svg>
+          <div class="holo-label">WASD move · Space jump · S slide · J dash · K tongue · Q/E orbit</div>
+        </div>
+      </div>
+      <div id="mobile-controls">
+        <div class="pad" id="pad-left">◀</div>
+        <div class="pad" id="pad-right">▶</div>
+        <div class="pad" id="pad-jump">JUMP</div>
+      </div>
+      <div id="title" class="overlay visible">
+        <img src="/Blobothan_game_logo_design_841106e9_2K.jpg" alt="Blobothan" id="title-logo" />
+        <p style="color:#9fffe0; letter-spacing:0.2em; text-transform:uppercase; font-size:0.8rem;">Four Realms of Rolling Mayhem</p>
+        <p>A blobby, gravity-defying skate odyssey across four wild realms — pinball groves, golden foundries, neon half-pipes and an endless mega-park. Roll, ollie, hand-plant and shred your way to glory!</p>
+        <div style="display:flex; gap:1rem; align-items:center;">
+          <button class="btn" id="btn-start">Begin the Roll</button>
+          <button class="btn" id="btn-customize" style="background:linear-gradient(180deg,#ff9fd0,#d94f9a); box-shadow:0 8px 30px rgba(217,79,154,0.4);">Customize</button>
+        </div>
+        <div class="hint">
+          <kbd>←</kbd><kbd>→</kbd> / <kbd>A</kbd><kbd>D</kbd> Roll &nbsp;·&nbsp; <kbd>Space</kbd> Jump ×3 (flip!) &nbsp;·&nbsp; <kbd>J</kbd> Dash<br />
+          <kbd>S</kbd> Slide/Crouch-pop &nbsp;·&nbsp; <kbd>K</kbd> Tongue Grapple &nbsp;·&nbsp; <kbd>Q</kbd><kbd>E</kbd> Spin (skate)<br />
+          <span style="color:#7fffd4">Gamepad:</span> A/RT jump+trick · X dash · Y hand plant (hold near bar) · B/LT grab · LB/RB spin
+        </div>
+      </div>
+      <div id="gameover" class="overlay">
+        <h1 class="bad">Splat.</h1>
+        <p id="gameover-msg">The grove reclaims you.</p>
+        <button class="btn" id="btn-restart">Roll Again</button>
+      </div>
+      <div id="win" class="overlay">
+        <h1 class="glow">Odyssey Complete.</h1>
+        <p id="win-msg">You rolled through every enchanted realm.</p>
+        <button class="btn" id="btn-win-restart">Play Again</button>
+      </div>
+      <div id="loading"><div>Weaving the Glowgrove…</div><div class="bar"><div class="fill" id="loading-fill"></div></div></div>
+      <div id="error"><div>Game failed to start</div><div id="error-msg"></div><button class="btn" id="btn-reload">Reload</button></div>
+      <div id="customize">
+        <h2>Character Customization</h2>
+        <div class="sub">Dress Blobothan for the odyssey</div>
+        <div class="cust-tabs" id="cust-tabs"></div>
+        <div class="cust-grid" id="cust-grid"></div>
+        <div class="cust-btns">
+          <button class="btn" id="btn-cust-random" style="background:linear-gradient(180deg,#ffd86b,#e0a020);">Randomize</button>
+          <button class="btn" id="btn-cust-reset">Reset</button>
+          <button class="btn" id="btn-cust-done">Done</button>
+        </div>
+      </div>
+    </div>
+    <script>
+      // Split the title into staggered letters for the animated entrance
+      (function () {
+        const el = document.getElementById('title-text');
+        if (!el) return;
+        const text = el.textContent || '';
+        el.textContent = '';
+        for (let i = 0; i < text.length; i++) {
+          const span = document.createElement('span');
+          span.className = 'letter';
+          span.textContent = text[i];
+          span.style.animationDelay = (0.85 + i * 0.07) + 's';
+          el.appendChild(span);
+        }
+      })();
+    </script>
+    <script type="module" src="/src/index.ts"></script>
+  </body>
+</html>
