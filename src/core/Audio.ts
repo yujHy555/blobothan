@@ -165,20 +165,8 @@ export class Audio {
     if (this.rollFilter) this.rollFilter.frequency.value = 480 + sp * 1900;
   }
 
-  /** Funky 120-BPM bass + drums loop for the skate level. */
-  public startGroove() {
-    if (this.grooveTimer != null) return;
-    const bass = [55, 55, 82.41, 55, 73.42, 73.42, 55, 98, 55, 55, 82.41, 110, 73.42, 55, 98, 82.41];
-    this.grooveStep = 0;
-    this.grooveTimer = window.setInterval(() => {
-      if (!this.ctx || this.muted) return;
-      const i = this.grooveStep++ % bass.length;
-      this.tone(bass[i], 0.17, 'sawtooth', 0.13, bass[i] * 0.98);
-      this.noise(0.035, 0.045, 6500); // hi-hat
-      if (i % 4 === 0) this.tone(72, 0.13, 'sine', 0.2, 44); // kick
-      if (i === 4 || i === 12) this.noise(0.12, 0.09, 1900); // snare
-    }, 125);
-  }
+  /** Music loops disabled — only sound effects play. */
+  public startGroove() { /* no music loop */ }
 
   public stopGroove() {
     if (this.grooveTimer != null) { clearInterval(this.grooveTimer); this.grooveTimer = null; }
@@ -255,33 +243,9 @@ export class Audio {
   }
   public start() { [392, 523, 659].forEach((f, i) => setTimeout(() => this.tone(f, 0.2, 'triangle', 0.16), i * 80)); }
 
-  // ---- 8-bit menu music (pong/atari-style arpeggios) ----
-  private menuTimer: number | null = null;
-  private menuStep = 0;
+  // ---- Menu music disabled — sound effects only ----
+  /** No looping menu track; kept as a one-shot UI blip for feedback. */
+  public startMenuMusic() { this.tone(660, 0.08, 'triangle', 0.07); }
 
-  /** Classic chip melody — a looping square-wave arpeggio with a bassline. */
-  public startMenuMusic() {
-    this.unlock();
-    if (this.menuTimer !== null) return;
-    // iconic 8-bit pattern (A minor-ish arpeggio)
-    const lead = [440, 523, 659, 523, 392, 523, 659, 784, 440, 523, 659, 880, 784, 659, 523, 392];
-    const bass = [110, 110, 130, 130, 98, 98, 110, 110];
-    const beat = 115; // ms — upbeat retro tempo
-    this.menuTimer = window.setInterval(() => {
-      if (this.muted || !this.ctx) return;
-      const i = this.menuStep;
-      this.tone(lead[i % lead.length], 0.1, 'square', 0.07);
-      if (i % 2 === 0) this.tone(bass[(i / 2) % bass.length], 0.16, 'triangle', 0.09);
-      // occasional high blip for arcade flavor
-      if (i % 8 === 4) this.tone(1568, 0.05, 'square', 0.04);
-      this.menuStep = (i + 1) % lead.length;
-    }, beat);
-  }
-
-  public stopMenuMusic() {
-    if (this.menuTimer !== null) {
-      clearInterval(this.menuTimer);
-      this.menuTimer = null;
-    }
-  }
+  public stopMenuMusic() { /* no music loop to stop */ }
 }

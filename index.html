@@ -34,6 +34,32 @@
       #fps.bad .led { background: #ff5f6f; box-shadow: 0 0 10px #ff5f6f; }
       #fps.bad .num { color: #ff8f9a; }
       #fps canvas { width: 56px; height: 22px; display: block; opacity: 0.85; }
+      /* Always-on Main Menu button (hidden only on the title screen) */
+      #menu-btn {
+        position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+        z-index: 30; padding: 8px 20px; border-radius: 999px;
+        font: 800 0.85rem/1 'Fredoka', 'Segoe UI', sans-serif; letter-spacing: 0.1em;
+        color: #7fffd4; background: rgba(8, 18, 30, 0.7);
+        border: 1.5px solid rgba(127, 255, 212, 0.55);
+        backdrop-filter: blur(8px); box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+        cursor: pointer; transition: transform 0.12s, background 0.12s;
+      }
+      #menu-btn:hover { background: rgba(127,255,212,0.2); transform: translateX(-50%) translateY(-2px); }
+      #menu-btn.hidden { display: none; }
+      /* Level select buttons on the main menu */
+      #level-select {
+        display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem;
+        margin: 0.2rem 0 1.2rem;
+      }
+      #level-select .btn {
+        padding: 0.65rem 1.2rem; font-size: 1rem; font-weight: 700;
+        border-radius: 12px; color: #05121a; border: none; cursor: pointer;
+      }
+      #level-select .btn.lv1 { background: linear-gradient(180deg, #9fffe0, #4fd6b0); }
+      #level-select .btn.lv2 { background: linear-gradient(180deg, #ffd86b, #f5a623); }
+      #level-select .btn.lv3 { background: linear-gradient(180deg, #d6a0ff, #9b5fe0); color: #fff; }
+      #level-select .btn.lv4 { background: linear-gradient(180deg, #ff9fd0, #d94f9a); color: #fff; }
+      #level-select .btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
       #babylon { width: 100%; height: 100%; display: block; touch-action: none; }
       #pixi { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
       #hud {
@@ -209,6 +235,7 @@
       <canvas id="babylon"></canvas>
       <canvas id="pixi"></canvas>
       <div id="transition"></div>
+      <button id="menu-btn" class="hidden">⌂ MAIN MENU</button>
       <div id="fps">
         <span class="led"></span>
         <div>
@@ -292,6 +319,12 @@
         <img src="/Blobothan_game_logo_design_841106e9_2K.jpg" alt="Blobothan" id="title-logo" />
         <p style="color:#9fffe0; letter-spacing:0.2em; text-transform:uppercase; font-size:0.8rem;">Four Realms of Rolling Mayhem</p>
         <p>A blobby, gravity-defying skate odyssey across four wild realms — pinball groves, golden foundries, neon half-pipes and an endless mega-park. Roll, ollie, hand-plant and shred your way to glory!</p>
+        <div id="level-select">
+          <button class="btn lv1" data-level="0">1 · Glowgrove</button>
+          <button class="btn lv2" data-level="1">2 · Solar Foundry</button>
+          <button class="btn lv3" data-level="2">3 · Neon Bowl</button>
+          <button class="btn lv4" data-level="3">4 · Ollie Ollie Ollie</button>
+        </div>
         <div style="display:flex; gap:1rem; align-items:center;">
           <button class="btn" id="btn-start">Begin the Roll</button>
           <button class="btn" id="btn-customize" style="background:linear-gradient(180deg,#ff9fd0,#d94f9a); box-shadow:0 8px 30px rgba(217,79,154,0.4);">Customize</button>

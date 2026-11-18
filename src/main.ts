@@ -1354,6 +1354,8 @@ export class Game {
     this.buildWorld(0);
     this.realm = 0;
     this.updateHUD();
+    const mb = document.getElementById('menu-btn');
+    if (mb) mb.classList.add('hidden');
   }
 
   private wireUI() {
@@ -1398,6 +1400,8 @@ export class Game {
     const begin = () => {
       const t = document.getElementById('title');
       if (t) { t.classList.remove('visible'); t.style.display = 'none'; }
+      const mb = document.getElementById('menu-btn');
+      if (mb) mb.classList.remove('hidden');
       this.audio.stopMenuMusic();
       this.audio.unlock();
       this.audio.start();
@@ -1413,6 +1417,19 @@ export class Game {
     };
     const start = document.getElementById('btn-start');
     if (start) start.addEventListener('click', begin);
+
+    // Always-on Main Menu button
+    document.getElementById('menu-btn')?.addEventListener('click', () => this.goToMenu());
+
+    // Level select buttons on the main menu
+    document.querySelectorAll('#level-select .btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const lvl = parseInt((btn as HTMLElement).dataset.level ?? '0', 10);
+        begin();
+        if (lvl !== 0) this.enterPortal(lvl);
+      });
+    });
+
     this.input.onKeyDown('jump', () => { if (!this.started && !this.gameOver && !this.won) begin(); });
     const restart = () => {
       const go = document.getElementById('gameover'); const w = document.getElementById('win');
