@@ -182,7 +182,6 @@ export class BallPlayer {
 
   public setColliders(boxes: BoxCollider[]) {
     this.colliders = boxes;
-    this.style.setColliders(boxes);
   }
   public applyCosmetics(c: Cosmetics) { this.rig.applyCosmetics(c); }
   public get isGrounded() { return this.grounded; }

@@ -266,7 +266,6 @@ export class Game {
     this.jetBoostLevel = 0;
     if (this.player) {
       this.player.root.setEnabled(true);
-      this.player.style.shadow.setEnabled(true);
       this.player.rig.gunAim = false;
     }
     this.audio.stopGroove();
@@ -556,7 +555,6 @@ export class Game {
     // SKATING LEVELS — hide the rolling ball; the skater has its own rig.
     if (realm >= 2) {
       this.player.root.setEnabled(false);
-      this.player.style.shadow.setEnabled(false); // no stray dark disc under the skater
       this.camera.setSkateMode(realm === 3); // level 4 = continuous tracking + trick zoom
       this.camera.resetYaw(); // lock a clean side-view — no leftover orbit from platform levels
       this.skate = new SkateSystem(this.scene, this.mats, {
