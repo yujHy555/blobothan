@@ -18,10 +18,6 @@ import { GlowTiles } from './entities/GlowTiles';
 import { Decorations } from './entities/Decorations';
 import { MysteryLayer } from './entities/MysteryLayer';
 import { ParallaxMaximus } from './entities/ParallaxMaximus';
-import { CardboardTownParallax } from './entities/CardboardTownParallax';
-import { CardboardPipesForeground } from './entities/CardboardPipesForeground';
-import { BuildingParallax, preloadBuilding } from './entities/BuildingParallax';
-import { AnamorphicFlare } from './art/AnamorphicFlare';
 import { CustomizationUI } from './core/CustomizationUI';
 import { IBLLighting } from './core/IBLLighting';
 import { WORLD } from './levels/world';
@@ -114,11 +110,7 @@ export class Game {
   private hemi!: BABYLON.HemisphericLight;
   private glowLayer!: BABYLON.GlowLayer;
   private parallax: BABYLON.Mesh[] = [];
-  private parallaxMax!: ParallaxMaximus | null;
-  private cardboardTown!: CardboardTownParallax | null;
-  private cardboardPipes!: CardboardPipesForeground | null;
-  private buildingLayer!: BuildingParallax | null;
-  private flare!: AnamorphicFlare | null;
+  private parallaxMax!: ParallaxMaximus;
 
   constructor(babylon: HTMLCanvasElement, pixi: HTMLCanvasElement) {
     this.babylonCanvas = babylon;
@@ -188,7 +180,6 @@ export class Game {
 
     this.input = new Input();
     this.camera = new CameraRig(this.scene, this.babylonCanvas);
-    this.flare = new AnamorphicFlare(this.scene, this.camera.getCamera());
     this.mats = new Materials(this.scene);
 
     this.ibl = new IBLLighting(this.scene);
@@ -204,8 +195,6 @@ export class Game {
     };
 
     setLoading(70, 'Building enchanted lands…');
-    // Preload the level-4 GLB once during startup so portal jumps never hitch.
-    try { await preloadBuilding(this.scene); } catch (e) { console.warn(e); }
     this.buildWorld(0);
 
     this.wireUI();
@@ -317,8 +306,6 @@ export class Game {
     this.scene.fogColor = new BABYLON.Color3(pal.clear[0], pal.clear[1], pal.clear[2]);
     this.scene.fogDensity = pal.fogDensity;
     if (this.glowLayer) this.glowLayer.intensity = realm === 1 ? 0.22 : 0.45;
-    // Cinema-wide anamorphic flares only in the endless level-4 mega-park.
-    if (this.flare) this.flare.setEnabled(realm === 3);
     // HDRI/IBL look for the brutalist arena (lightweight IBL, no SSAO)
     if (this.ibl) this.ibl.apply(pal, realm === 1 ? 1.15 : 0.6);
     this.hemi.diffuse = new BABYLON.Color3(pal.hemi[0], pal.hemi[1], pal.hemi[2]);
@@ -328,19 +315,9 @@ export class Game {
     if (worldName) worldName.textContent = pal.name;
     if (realmSub) realmSub.textContent = pal.sub;
 
-    // PARALLAX — level 4 gets the AAA cardboard-town backdrop; other 2.5D
-    // realms get the layered mountains/islands parallax.
-    if (this.parallaxMax) { this.parallaxMax.dispose(); this.parallaxMax = null; }
-    if (this.cardboardTown) { this.cardboardTown.dispose(); this.cardboardTown = null; }
-    if (this.cardboardPipes) { this.cardboardPipes.dispose(); this.cardboardPipes = null; }
-    if (this.buildingLayer) { this.buildingLayer.dispose(); this.buildingLayer = null; }
-    if (realm === 3) {
-      this.cardboardTown = new CardboardTownParallax(this.scene, def.spawn.x, pal.accent);
-      this.cardboardPipes = new CardboardPipesForeground(this.scene, def.spawn.x, pal.accent);
-      this.buildingLayer = new BuildingParallax(this.scene, def.spawn.x, pal.accent);
-    } else {
-      this.parallaxMax = new ParallaxMaximus(this.scene, this.mats, def.spawn.x, pal.clear, pal.ground, pal.accent);
-    }
+    // PARALLAX MAXIMUS — layered mountains, floating islands, celestial body.
+    if (this.parallaxMax) { this.parallaxMax.dispose(); this.parallaxMax = null as any; }
+    this.parallaxMax = new ParallaxMaximus(this.scene, this.mats, def.spawn.x, pal.clear, pal.ground, pal.accent);
     // Level 2: AAA meteor/comet shower streaking far behind the level
     if (realm === 1) this.meteorField = new MeteorField(this.scene, this.mats, def.spawn.x + 100, pal.accent);
 
@@ -1239,16 +1216,6 @@ export class Game {
       this.parallaxMax.update(dt);
       this.parallaxMax.scroll(this.camera.getPosition().x, WORLD[this.realm].spawn.x);
     }
-    if (this.cardboardTown) {
-      this.cardboardTown.update(dt);
-      this.cardboardTown.scroll(this.camera.getPosition().x);
-    }
-    if (this.cardboardPipes) {
-      this.cardboardPipes.update(dt);
-      this.cardboardPipes.scroll(this.camera.getPosition().x);
-    }
-    if (this.buildingLayer) this.buildingLayer.scroll(this.camera.getPosition().x);
-    if (this.flare) this.flare.update(dt);
     if (this.mystery) this.mystery.update(dt);
     if (this.decorations) this.decorations.update(dt);
     if (this.meteorField) this.meteorField.update(dt);
