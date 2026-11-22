@@ -17,6 +17,8 @@ import { GlowTiles } from './entities/GlowTiles';
 import { Decorations } from './entities/Decorations';
 import { MysteryLayer } from './entities/MysteryLayer';
 import { ParallaxMaximus } from './entities/ParallaxMaximus';
+import { CardboardTownParallax } from './entities/CardboardTownParallax';
+import { CardboardPipesForeground } from './entities/CardboardPipesForeground';
 import { CustomizationUI } from './core/CustomizationUI';
 import { IBLLighting } from './core/IBLLighting';
 import { WORLD } from './levels/world';
@@ -109,7 +111,9 @@ export class Game {
   private hemi!: BABYLON.HemisphericLight;
   private glowLayer!: BABYLON.GlowLayer;
   private parallax: BABYLON.Mesh[] = [];
-  private parallaxMax!: ParallaxMaximus;
+  private parallaxMax!: ParallaxMaximus | null;
+  private cardboardTown!: CardboardTownParallax | null;
+  private cardboardPipes!: CardboardPipesForeground | null;
 
   constructor(babylon: HTMLCanvasElement, pixi: HTMLCanvasElement) {
     this.babylonCanvas = babylon;
@@ -314,11 +318,17 @@ export class Game {
     if (worldName) worldName.textContent = pal.name;
     if (realmSub) realmSub.textContent = pal.sub;
 
-    // PARALLAX MAXIMUS — layered mountains, floating islands, celestial body.
-    // Only for 2.5D realms; the third-person arena has its own full 3D world
-    // so a flat backdrop would incorrectly show through the floor.
-    if (this.parallaxMax) { this.parallaxMax.dispose(); this.parallaxMax = null as any; }
-    this.parallaxMax = new ParallaxMaximus(this.scene, this.mats, def.spawn.x, pal.clear, pal.ground, pal.accent);
+    // PARALLAX — level 4 gets the AAA cardboard-town backdrop; other 2.5D
+    // realms get the layered mountains/islands parallax.
+    if (this.parallaxMax) { this.parallaxMax.dispose(); this.parallaxMax = null; }
+    if (this.cardboardTown) { this.cardboardTown.dispose(); this.cardboardTown = null; }
+    if (this.cardboardPipes) { this.cardboardPipes.dispose(); this.cardboardPipes = null; }
+    if (realm === 3) {
+      this.cardboardTown = new CardboardTownParallax(this.scene, def.spawn.x, pal.accent);
+      this.cardboardPipes = new CardboardPipesForeground(this.scene, def.spawn.x, pal.accent);
+    } else {
+      this.parallaxMax = new ParallaxMaximus(this.scene, this.mats, def.spawn.x, pal.clear, pal.ground, pal.accent);
+    }
     // Level 2: AAA meteor/comet shower streaking far behind the level
     if (realm === 1) this.meteorField = new MeteorField(this.scene, this.mats, def.spawn.x + 100, pal.accent);
 
@@ -1216,6 +1226,14 @@ export class Game {
     if (this.parallaxMax) {
       this.parallaxMax.update(dt);
       this.parallaxMax.scroll(this.camera.getPosition().x, WORLD[this.realm].spawn.x);
+    }
+    if (this.cardboardTown) {
+      this.cardboardTown.update(dt);
+      this.cardboardTown.scroll(this.camera.getPosition().x);
+    }
+    if (this.cardboardPipes) {
+      this.cardboardPipes.update(dt);
+      this.cardboardPipes.scroll(this.camera.getPosition().x);
     }
     if (this.mystery) this.mystery.update(dt);
     if (this.decorations) this.decorations.update(dt);
