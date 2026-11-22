@@ -1,5 +1,5 @@
 import * as BABYLON from 'babylonjs';
-import { townStrip, RGB } from '../art/CardboardArt';
+import { townStrip, RGB, CardboardImage } from '../art/CardboardArt';
 
 /**
  * CARDBOARD TOWN — seamless parallax built from IMAGE TEXTURES on flat planes.
@@ -16,6 +16,7 @@ export class CardboardTownParallax {
   private disposables: BABYLON.Material[] = [];
   private textures: BABYLON.Texture[] = [];
   private clouds: BABYLON.Mesh[] = [];
+  private skyMesh!: BABYLON.Mesh;
   private t = 0;
 
   constructor(scene: BABYLON.Scene, centerX: number, accent: RGB) {
@@ -34,14 +35,16 @@ export class CardboardTownParallax {
 
     // Camera sits at z=-44 looking toward +Z; the play plane is z=0. All
     // backdrop planes therefore sit at POSITIVE z, behind the skater.
-    this.addLayer('far', 168, 0.12, 150, far, 0.78, 46, 34);
-    this.addLayer('mid', 152, 0.3, 95, mid, 1.0, 54, 28);
+    // Tile width / plane height MUST match the 2048x768 strip aspect (2.667)
+    // so round clocks, gauges and windows render as circles, not ovals.
+    this.addLayer('far', 123, 0.12, 150, far, 0.78, 46, 34);
+    this.addLayer('mid', 144, 0.3, 95, mid, 1.0, 54, 28);
     this.addLayer('near', 160, 0.58, 50, near, 1.12, 60, 22);
 
     this.cloudsAndMotes(accent);
   }
 
-  private images: { albedo: BABYLON.Texture; normal: BABYLON.Texture }[] = [];
+  private images: CardboardImage[] = [];
 
   private sky() {
     const cv = document.createElement('canvas');
@@ -62,15 +65,17 @@ export class CardboardTownParallax {
     mat.disableLighting = true;
     mat.backFaceCulling = false;
     this.disposables.push(mat);
-    const band = BABYLON.MeshBuilder.CreatePlane('cbSkyBand', { width: 1800, height: 900 }, this.scene);
+    const band = BABYLON.MeshBuilder.CreatePlane('cbSkyBand', { width: 2400, height: 1100 }, this.scene);
     band.position.set(this.centerX, 120, 260);
     band.material = mat;
     band.isPickable = false;
-    this.layers.push({ tiles: [band], tileWidth: 1800, speed: 0.02 });
+    this.skyMesh = band;
+    // NOT added to the wrapping layers — it tracks the camera exactly so its
+    // edge can never scroll into view.
   }
 
   private addLayer(name: string, tileWidth: number, speed: number, z: number,
-                   image: { albedo: BABYLON.Texture; normal: BABYLON.Texture },
+                   image: CardboardImage,
                    tint: number, height: number, y: number) {
     const mat = new BABYLON.PBRMaterial(`cbMat_${name}`, this.scene);
     mat.albedoTexture = image.albedo;
@@ -80,8 +85,10 @@ export class CardboardTownParallax {
     mat.useAlphaFromAlbedoTexture = true;
     mat.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND;
     mat.albedoColor = new BABYLON.Color3(tint, tint, tint);
-    mat.emissiveTexture = image.albedo;
-    mat.emissiveColor = new BABYLON.Color3(0.28, 0.28, 0.28);
+    // Only the painted lit windows live in the emissive map → the glow layer
+    // blooms them as cozy candlelight without extra geometry or occlusion.
+    mat.emissiveTexture = image.emissive ?? image.albedo;
+    mat.emissiveColor = new BABYLON.Color3(1.15, 0.9, 0.6);
     mat.metallic = 0;
     mat.roughness = 0.95;
     mat.environmentIntensity = 0.35;
@@ -112,7 +119,7 @@ export class CardboardTownParallax {
     g.addColorStop(0, 'rgba(255,246,232,0.85)');
     g.addColorStop(1, 'rgba(255,246,232,0)');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.ellipse(W / 2, H / 2, W * 0.46, H * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W / 2, H / 2, H * 0.42, 0, Math.PI * 2); ctx.fill();
     const tex = new BABYLON.Texture(cv.toDataURL(), this.scene, false, true);
     tex.hasAlpha = true;
     this.textures.push(tex);
@@ -145,6 +152,8 @@ export class CardboardTownParallax {
   }
 
   public scroll(camX: number) {
+    // Sky is anchored to the camera — its edge can never enter the view.
+    this.skyMesh.position.x = camX;
     for (const layer of this.layers) {
       const w = layer.tileWidth;
       const shift = camX * (1 - layer.speed);
@@ -158,6 +167,7 @@ export class CardboardTownParallax {
   }
 
   public dispose() {
+    this.skyMesh.dispose(false, false);
     for (const l of this.layers) for (const t of l.tiles) t.dispose(false, false);
     for (const img of this.images) { img.albedo.dispose(); img.normal.dispose(); }
     for (const m of this.disposables) m.dispose();

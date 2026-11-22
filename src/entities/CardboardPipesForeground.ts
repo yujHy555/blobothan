@@ -25,9 +25,10 @@ export class CardboardPipesForeground {
     this.images.push(bottom, top);
 
     // Camera at z=-44 looks toward +Z; these planes sit between camera and
-    // skater (negative z). Y is tuned to frame the visible view bottom/top.
-    this.addLayer('bottom', 148, 1.45, -13, bottom, -4, 7, 1.0, accent);
-    this.addLayer('top', 132, 1.62, -11, top, 20, 6, 0.85, accent);
+    // skater (negative z). Plane width/height MUST match the 2048x320 strip
+    // aspect (6.4) so the circular gauges & valve wheels stay perfectly round.
+    this.addLayer('bottom', 51, 1.45, -13, bottom, -4, 8, 1.0, accent);
+    this.addLayer('top', 45, 1.62, -11, top, 20, 7, 0.85, accent);
   }
 
   private addLayer(name: string, tileWidth: number, speed: number, z: number,

@@ -57,8 +57,8 @@ function moss(ctx: CanvasRenderingContext2D, x: number, y: number, rand: () => n
   for (let i = 0; i < 20; i++) {
     ctx.fillStyle = css(shade(MOSS, 0.65 + rand() * 0.6), 0.8);
     ctx.beginPath();
-    ctx.ellipse(x + (rand() - 0.5) * 28 * s, y - rand() * 7 * s,
-      (2 + rand() * 3) * s, (1.5 + rand() * 2) * s, 0, 0, Math.PI * 2);
+    ctx.arc(x + (rand() - 0.5) * 28 * s, y - rand() * 7 * s,
+      (2 + rand() * 3) * s, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -92,8 +92,8 @@ function cardboardTree(ctx: CanvasRenderingContext2D, x: number, groundY: number
     for (let s = 0; s < 7; s++) {
       const a = (s / 6) * Math.PI;
       ctx.beginPath();
-      ctx.ellipse(x + Math.cos(a) * rw * 0.6, ly + Math.sin(a) * 6 * scale,
-        (14 - l) * scale, (9 - l * 0.7) * scale, 0, 0, Math.PI * 2);
+      ctx.arc(x + Math.cos(a) * rw * 0.6, ly + Math.sin(a) * 6 * scale,
+        (11 - l * 0.5) * scale, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -133,7 +133,7 @@ function clockTower(ctx: CanvasRenderingContext2D, x: number, baseY: number, w: 
 }
 
 /** Cottage: brick or kraft body, corrugated roof, warm windows, awning, moss. */
-function cottage(ctx: CanvasRenderingContext2D, x: number, baseY: number, w: number, h: number, rand: () => number, detail: number) {
+function cottage(ctx: CanvasRenderingContext2D, x: number, baseY: number, w: number, h: number, rand: () => number, detail: number, emit: CanvasRenderingContext2D | null) {
   const top = baseY - h;
   ctx.fillStyle = css(INK, 0.16); ctx.fillRect(x + 5, top + 5, w, h);
   if (rand() > 0.42) bricks(ctx, x, top, w, h, rand);
@@ -169,6 +169,16 @@ function cottage(ctx: CanvasRenderingContext2D, x: number, baseY: number, w: num
       const g = ctx.createRadialGradient(wx + 12, wy + 14, 2, wx + 12, wy + 14, 34);
       g.addColorStop(0, css(GOLD, 0.4)); g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g; ctx.fillRect(wx - 16, wy - 16, 56, 60);
+      // Cozy emission: paint this random window into the emissive map so the
+      // glow layer gives it a warm candlelit halo.
+      if (emit) {
+        const eg = emit.createRadialGradient(wx + 12, wy + 14, 1, wx + 12, wy + 14, 30);
+        eg.addColorStop(0, css([1.0, 0.82, 0.5], 0.95));
+        eg.addColorStop(0.4, css([1.0, 0.68, 0.3], 0.45));
+        eg.addColorStop(1, 'rgba(0,0,0,0)');
+        emit.fillStyle = eg;
+        emit.fillRect(wx - 18, wy - 18, 60, 64);
+      }
     }
   }
   if (detail > 0) {
@@ -236,26 +246,79 @@ function normalFrom(cv: HTMLCanvasElement, strength: number): HTMLCanvasElement 
 
 function texFrom(cv: HTMLCanvasElement, scene: BABYLON.Scene) {
   // invertY=true → canvas top maps to plane top (no upside-down town).
-  const t = new BABYLON.Texture(cv.toDataURL(), scene, false, true);
+  // Mipmaps + trilinear + high anisotropy stop the thin rail/lines from
+  // shimmering (aliasing) as the parallax scrolls sub-pixel distances.
+  const t = new BABYLON.Texture(cv.toDataURL(), scene, false, true,
+    BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
   t.wrapU = BABYLON.Texture.WRAP_ADDRESSMODE;
   t.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+  t.anisotropicFilteringLevel = 8;
   return t;
 }
-export interface CardboardImage { albedo: BABYLON.Texture; normal: BABYLON.Texture; }
+export interface CardboardImage { albedo: BABYLON.Texture; normal: BABYLON.Texture; emissive?: BABYLON.Texture; }
+
+/** Standalone kraft cardboard albedo + normal pair, used by 3D reskinning. */
+export function cardboardTextures(scene: BABYLON.Scene, key: string, base: RGB, seed: number) {
+  const W = 512, H = 512;
+  const ac = document.createElement('canvas'); ac.width = W; ac.height = H;
+  const nc = document.createElement('canvas'); nc.width = W; nc.height = H;
+  const a = ac.getContext('2d')!, n = nc.getContext('2d')!;
+  const rand = rng(seed);
+  const height = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let h = 0.5 + 0.1 * Math.sin(x * 0.05 + seed) + 0.07 * Math.cos(y * 0.09)
+      + 0.12 * Math.sin(x * 0.3) + (rand() - 0.5) * 0.05;
+    height[y * W + x] = h;
+    const shadeF = 0.72 + h * 0.5;
+    const i = (y * W + x) * 4;
+    a.fillStyle = css(shade(base, shadeF));
+    a.fillRect(x, y, 1, 1);
+  }
+  const img = a.getImageData(0, 0, W, H), nd = n.createImageData(W, H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const l = height[y * W + ((x - 1 + W) % W)], r = height[y * W + ((x + 1) % W)];
+    const u = height[((y - 1 + H) % H) * W + x], d = height[((y + 1) % H) * W + x];
+    const nx = (l - r) * 3, ny = (u - d) * 3, inv = 1 / Math.hypot(nx, ny, 1);
+    const i = (y * W + x) * 4;
+    nd.data[i] = (nx * inv * 0.5 + 0.5) * 255;
+    nd.data[i + 1] = (ny * inv * 0.5 + 0.5) * 255;
+    nd.data[i + 2] = (inv * 0.5 + 0.5) * 255;
+    nd.data[i + 3] = 255;
+  }
+  void img;
+  n.putImageData(nd, 0, 0);
+  const albedo = texFrom(ac, scene), normal = texFrom(nc, scene);
+  void key;
+  return { albedo, normal };
+}
 
 export function townStrip(scene: BABYLON.Scene, seed: number, detail: number, _palette?: RGB[]): CardboardImage {
   const W = 2048, H = 768;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d')!; const rand = rng(seed);
   ctx.clearRect(0, 0, W, H);
+  // Separate transparent canvas holding only the cozy lit windows.
+  const ec = document.createElement('canvas'); ec.width = W; ec.height = H;
+  const emit = ec.getContext('2d')!;
+  emit.clearRect(0, 0, W, H);
   const baseY = H - 30;
 
-  // Layered cut-paper mountains with exposed fluted ridges.
-  mountains(ctx, W, baseY - 90, 300, [0.66, 0.62, 0.54], rand);
-  mountains(ctx, W, baseY - 40, 190, shade(KRAFT, 0.92), rand);
-  // Windmills perched on the hills.
-  windmill(ctx, W * 0.16, baseY - 200, 40, rand);
-  windmill(ctx, W * 0.76, baseY - 170, 32, rand);
+  // No jagged mountains — a soft layered kraft-paper horizon instead, so the
+  // cardboard town reads as a clean hand-built diorama.
+  const horizon = ctx.createLinearGradient(0, baseY - 300, 0, baseY);
+  horizon.addColorStop(0, 'rgba(214, 177, 131, 0)');
+  horizon.addColorStop(1, 'rgba(200, 160, 110, 0.55)');
+  ctx.fillStyle = horizon;
+  ctx.fillRect(0, baseY - 300, W, 300);
+  // A couple of gently rolling kraft hills (smooth quadratics, no spikes).
+  ctx.fillStyle = css(shade(KRAFT, 0.9));
+  ctx.beginPath();
+  ctx.moveTo(0, baseY);
+  for (let x = 0; x <= W; x += 4) ctx.lineTo(x, baseY - 60 - Math.sin(x * 0.004) * 30 - Math.sin(x * 0.011) * 12);
+  ctx.lineTo(W, baseY); ctx.closePath(); ctx.fill();
+  // Windmills perched on the gentle hills.
+  windmill(ctx, W * 0.16, baseY - 110, 34, rand);
+  windmill(ctx, W * 0.76, baseY - 96, 28, rand);
 
   // Exact-fit cottages → seamless. One of them is a landmark clock tower.
   const widths: number[] = []; let total = 0;
@@ -265,7 +328,7 @@ export function townStrip(scene: BABYLON.Scene, seed: number, detail: number, _p
     const w = rw * scale - 4;
     if (w > 10) {
       if (idx % 5 === 2) clockTower(ctx, x + w * 0.1, baseY, w * 0.8, 230 + rand() * 90, rand);
-      else cottage(ctx, x, baseY, w, 210 + rand() * 250, rand, detail);
+      else cottage(ctx, x, baseY, w, 210 + rand() * 250, rand, detail, emit);
       if (detail > 0 && rand() > 0.6) cardboardTree(ctx, x + w * 0.85, baseY, 0.7 + rand() * 0.4, rand);
     }
     x += rw * scale; idx++;
@@ -282,7 +345,11 @@ export function townStrip(scene: BABYLON.Scene, seed: number, detail: number, _p
   corrugated(ctx, 0, H - 30, W, 30, false, rand);
   for (let i = 0; i < 34; i++) moss(ctx, i * (W / 34), H - 32, rand, 1.3);
   paperFinish(ctx, W, H, rand, 0.85);
-  return { albedo: texFrom(cv, scene), normal: texFrom(normalFrom(cv, 2.2), scene) };
+  return {
+    albedo: texFrom(cv, scene),
+    normal: texFrom(normalFrom(cv, 2.2), scene),
+    emissive: texFrom(ec, scene),
+  };
 }
 
 export function pipeStrip(scene: BABYLON.Scene, seed: number, top: boolean): CardboardImage {

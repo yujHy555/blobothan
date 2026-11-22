@@ -22,6 +22,7 @@ export class CameraRig {
   public setSkateMode(on: boolean) { this.skateMode = on; this.trickZoom = 0; }
   public resetYaw() { this.yaw = 0; this.tpYaw = 0; this.pitch = 0; this.camera.rotation.z = 0; }
   private tpYaw = 0;
+  private t = 0;
 
   constructor(scene: BABYLON.Scene, canvas: HTMLCanvasElement) {
     this._position = new BABYLON.Vector3(0, 26, -this.baseDist);
@@ -72,6 +73,10 @@ export class CameraRig {
    * and trauma-based shake. Everything is frame-rate independent.
    */
   public update(dt: number, px: number, py: number, velX = 0, velY = 0, grounded = true, rotInput = 0, dragX = 0, pz = 0) {
+    // Never integrate a huge/stale dt (e.g. after an async GLB load hitch) —
+    // an explicit Euler spring explodes past ~0.05 s, flying the camera off.
+    dt = BABYLON.Scalar.Clamp(dt, 0, 0.05);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) return; // bad physics tick
     if (this.isometric) {
       this.updateIsometric(dt, px, py, pz);
       return;
@@ -125,6 +130,15 @@ export class CameraRig {
       this._position.x += (Math.random() - 0.5) * f;
       this._position.y += (Math.random() - 0.5) * f;
       if (this.shakeTime === 0) this.shakeAmp = 0;
+    }
+
+    // Subtle handheld/cinematic drift for the endless level-4 park — a tiny,
+    // bounded sway that sells the parallax depth without motion sickness.
+    if (this.skateMode) {
+      this.t += dt;
+      this._position.x += Math.sin(this.t * 0.7) * 0.12;
+      this._position.y += Math.sin(this.t * 1.1 + 1.3) * 0.09;
+      this.camera.rotation.z += Math.sin(this.t * 0.53) * 0.004;
     }
 
     this.camera.position = this._position;

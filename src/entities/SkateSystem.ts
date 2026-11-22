@@ -736,6 +736,12 @@ export class SkateSystem {
         acc += steer * 90;
       }
       acc -= this.speed * 0.55;            // coast-down, no auto cruising
+      // LEFT STICK DOWN = TURBO: a strong forward surge with a flow cue.
+      if (input.boost) {
+        const dir = Math.sign(steer || this.speed || 1);
+        acc += dir * 62;
+        this.cb.onFlow?.(this.x, this.y, dir, Math.abs(this.speed));
+      }
       this.speed += acc * dt;
       if (this.isBoost(this.x)) {
         // Gentle boost pad — only enough to reward the line, no artificial launch
@@ -769,6 +775,7 @@ export class SkateSystem {
       for (let i = 0; i < steps; i++) {
         this.vy -= this.endlessGravity * sdt;
         if (Math.abs(steer) > 0.1) this.vx += steer * this.airControl * 0.65 * sdt;
+        if (input.boost) this.vx += Math.sign(steer || this.vx || 1) * 34 * sdt; // air turbo
         this.vx = Math.max(-CAP, Math.min(CAP, this.vx));
         this.x += this.vx * sdt;
         this.y += this.vy * sdt;
@@ -869,6 +876,7 @@ export class SkateSystem {
       // a direction can't strand the rider outside the bowl.
       const outerDamp = Math.abs(this.x) > this.halfW ? 0.25 : 1;
       acc += steer * this.carvePower * outerDamp;
+      if (input.boost) acc += Math.sign(steer || this.speed || 1) * 48; // stick-down turbo
       // Responsive turn-in: extra snap when steering against current travel
       if (Math.abs(steer) > 0.1 && Math.sign(steer) !== Math.sign(this.speed) && Math.abs(this.speed) > 1) {
         acc += steer * 26;

@@ -16,6 +16,30 @@
         pointer-events: none; transition: opacity 0.16s ease-in-out; z-index: 40;
       }
       #transition.active { opacity: 1; }
+      /* Playful per-level preloader shown during portal jumps */
+      #preloader {
+        position: absolute; inset: 0; z-index: 41; display: none;
+        flex-direction: column; align-items: center; justify-content: center;
+        gap: 1.1rem; background: radial-gradient(ellipse at 50% 45%, rgba(20,40,60,0.96), rgba(5,7,15,0.99));
+        color: #9fffe0; font-family: 'Fredoka', 'Segoe UI', sans-serif;
+      }
+      #preloader.show { display: flex; }
+      #preloader .pre-blob {
+        width: 90px; height: 78px; border-radius: 22px;
+        background: linear-gradient(180deg, #ff8ec4, #e0458c);
+        box-shadow: inset -8px -8px 0 rgba(0,0,0,0.12), 0 12px 40px rgba(255,120,190,0.35);
+        position: relative; animation: preBounce 0.7s ease-in-out infinite alternate;
+      }
+      #preloader .pre-blob::before, #preloader .pre-blob::after {
+        content: ''; position: absolute; top: 28px; width: 12px; height: 16px; border-radius: 50%; background: #fff;
+      }
+      #preloader .pre-blob::before { left: 22px; }
+      #preloader .pre-blob::after { right: 22px; }
+      @keyframes preBounce { from { transform: translateY(0) rotate(-6deg); } to { transform: translateY(-18px) rotate(6deg); } }
+      #preloader .pre-title { font-size: 2rem; font-weight: 800; letter-spacing: 0.05em; }
+      #preloader .pre-tip { font-size: 1rem; opacity: 0.8; font-family: 'Segoe UI', sans-serif; }
+      #preloader .pre-bar { width: 320px; height: 10px; border-radius: 6px; background: rgba(255,255,255,0.12); overflow: hidden; }
+      #preloader .pre-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #ff8ec4, #9fffe0); transition: width 0.12s linear; }
       /* AAA performance monitor — top-right, glassy HUD */
       #fps {
         position: absolute; top: 14px; right: 350px; z-index: 22;
@@ -235,6 +259,12 @@
       <canvas id="babylon"></canvas>
       <canvas id="pixi"></canvas>
       <div id="transition"></div>
+      <div id="preloader">
+        <div class="pre-blob"></div>
+        <div class="pre-title" id="pre-title">GET READY!</div>
+        <div class="pre-bar"><div class="pre-fill" id="pre-fill"></div></div>
+        <div class="pre-tip" id="pre-tip">Warming up the cardboard…</div>
+      </div>
       <button id="menu-btn" class="hidden">⌂ MAIN MENU</button>
       <div id="fps">
         <span class="led"></span>

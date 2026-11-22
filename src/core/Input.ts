@@ -19,11 +19,12 @@ export interface InputState {
   dragX: number;      // mouse/touch drag delta for orbiting
   axisX: number;
   axisZ: number;      // strafe / forward-back in third-person
+  boost: boolean;     // left stick pushed DOWN → speed boost
   anyInput: boolean;
 }
 
 export class Input {
-  public state: InputState = { left: false, right: false, jump: false, jumpPressed: false, slide: false, slidePressed: false, dash: false, dashPressed: false, grapple: false, grapplePressed: false, fire: false, firePressed: false, longLegsPressed: false, rotLeft: false, rotRight: false, dragX: 0, axisX: 0, axisZ: 0, anyInput: false };
+  public state: InputState = { left: false, right: false, jump: false, jumpPressed: false, slide: false, slidePressed: false, dash: false, dashPressed: false, grapple: false, grapplePressed: false, fire: false, firePressed: false, longLegsPressed: false, rotLeft: false, rotRight: false, dragX: 0, axisX: 0, axisZ: 0, boost: false, anyInput: false };
   private keys = new Set<string>();
   private justPressed = new Set<string>();
   private callbacks = new Map<string, () => void>();
@@ -140,6 +141,7 @@ export class Input {
     let dashPressed = snapshot.has('dash');
     let rotLeft = this.keys.has('rotLeft');
     let rotRight = this.keys.has('rotRight');
+    let padBoost = false;
 
     // Gamepad: poll fresh each frame with proper release + edge detection
     if (navigator.getGamepads) {
@@ -155,6 +157,8 @@ export class Input {
           ax = Math.sign(lx) * scaled;
         }
         const ly = gp.axes[1] ?? 0;
+        // Push the left stick DOWN past the deadzone = speed boost.
+        padBoost = ly > 0.62;
         if (Math.abs(ly) > dz) {
           const scaled = (Math.abs(ly) - dz) / (1 - dz);
           az = -Math.sign(ly) * scaled; // stick up = forward
@@ -196,6 +200,8 @@ export class Input {
       }
     }
 
+    // Left stick pushed DOWN = speed boost (skate/jetpack).
+    this.state.boost = padBoost || (this.keys.has('boost') || false);
     this.state.axisX = ax;
     this.state.axisZ = az;
     this.state.left = ax < -0.15;

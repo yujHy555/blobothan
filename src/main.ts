@@ -1,4 +1,5 @@
 import * as BABYLON from 'babylonjs';
+import 'babylonjs-loaders';
 import { HavokWorld } from './core/HavokWorld';
 import { Input } from './core/Input';
 import { CameraRig } from './core/CameraRig';
@@ -19,6 +20,8 @@ import { MysteryLayer } from './entities/MysteryLayer';
 import { ParallaxMaximus } from './entities/ParallaxMaximus';
 import { CardboardTownParallax } from './entities/CardboardTownParallax';
 import { CardboardPipesForeground } from './entities/CardboardPipesForeground';
+import { BuildingParallax, preloadBuilding } from './entities/BuildingParallax';
+import { AnamorphicFlare } from './art/AnamorphicFlare';
 import { CustomizationUI } from './core/CustomizationUI';
 import { IBLLighting } from './core/IBLLighting';
 import { WORLD } from './levels/world';
@@ -114,6 +117,8 @@ export class Game {
   private parallaxMax!: ParallaxMaximus | null;
   private cardboardTown!: CardboardTownParallax | null;
   private cardboardPipes!: CardboardPipesForeground | null;
+  private buildingLayer!: BuildingParallax | null;
+  private flare!: AnamorphicFlare | null;
 
   constructor(babylon: HTMLCanvasElement, pixi: HTMLCanvasElement) {
     this.babylonCanvas = babylon;
@@ -157,7 +162,7 @@ export class Game {
 
     // --- Engine & scene ---
     this.engine = new BABYLON.Engine(this.babylonCanvas, true, {
-      stencil: true, preserveDrawingBuffer: false,
+      stencil: true, preserveDrawingBuffer: false, antialias: true,
     });
     // Logarithmic depth buffer — eliminates z-fighting across the whole scene
     this.scene = new BABYLON.Scene(this.engine, { useGeometryUniqueIdsMap: true });
@@ -183,6 +188,7 @@ export class Game {
 
     this.input = new Input();
     this.camera = new CameraRig(this.scene, this.babylonCanvas);
+    this.flare = new AnamorphicFlare(this.scene, this.camera.getCamera());
     this.mats = new Materials(this.scene);
 
     this.ibl = new IBLLighting(this.scene);
@@ -198,6 +204,8 @@ export class Game {
     };
 
     setLoading(70, 'Building enchanted lands…');
+    // Preload the level-4 GLB once during startup so portal jumps never hitch.
+    try { await preloadBuilding(this.scene); } catch (e) { console.warn(e); }
     this.buildWorld(0);
 
     this.wireUI();
@@ -309,6 +317,8 @@ export class Game {
     this.scene.fogColor = new BABYLON.Color3(pal.clear[0], pal.clear[1], pal.clear[2]);
     this.scene.fogDensity = pal.fogDensity;
     if (this.glowLayer) this.glowLayer.intensity = realm === 1 ? 0.22 : 0.45;
+    // Cinema-wide anamorphic flares only in the endless level-4 mega-park.
+    if (this.flare) this.flare.setEnabled(realm === 3);
     // HDRI/IBL look for the brutalist arena (lightweight IBL, no SSAO)
     if (this.ibl) this.ibl.apply(pal, realm === 1 ? 1.15 : 0.6);
     this.hemi.diffuse = new BABYLON.Color3(pal.hemi[0], pal.hemi[1], pal.hemi[2]);
@@ -323,9 +333,11 @@ export class Game {
     if (this.parallaxMax) { this.parallaxMax.dispose(); this.parallaxMax = null; }
     if (this.cardboardTown) { this.cardboardTown.dispose(); this.cardboardTown = null; }
     if (this.cardboardPipes) { this.cardboardPipes.dispose(); this.cardboardPipes = null; }
+    if (this.buildingLayer) { this.buildingLayer.dispose(); this.buildingLayer = null; }
     if (realm === 3) {
       this.cardboardTown = new CardboardTownParallax(this.scene, def.spawn.x, pal.accent);
       this.cardboardPipes = new CardboardPipesForeground(this.scene, def.spawn.x, pal.accent);
+      this.buildingLayer = new BuildingParallax(this.scene, def.spawn.x, pal.accent);
     } else {
       this.parallaxMax = new ParallaxMaximus(this.scene, this.mats, def.spawn.x, pal.clear, pal.ground, pal.accent);
     }
@@ -1235,6 +1247,8 @@ export class Game {
       this.cardboardPipes.update(dt);
       this.cardboardPipes.scroll(this.camera.getPosition().x);
     }
+    if (this.buildingLayer) this.buildingLayer.scroll(this.camera.getPosition().x);
+    if (this.flare) this.flare.update(dt);
     if (this.mystery) this.mystery.update(dt);
     if (this.decorations) this.decorations.update(dt);
     if (this.meteorField) this.meteorField.update(dt);
@@ -1259,6 +1273,35 @@ export class Game {
   }
 
   private transitioning = false;
+  private static readonly LEVEL_TIPS = [
+    'Spin the blob. Own the grove!',
+    'Gilded ascent — mind the smashers!',
+    'Half-pipe hustle. Grab that air!',
+    'Endless ollies — chase the combo!',
+  ];
+
+  /** Playful preloader with a fake progress sweep so portal jumps never hard-cut. */
+  private showPreloader(target: number, done: () => void) {
+    const el = document.getElementById('preloader');
+    const title = document.getElementById('pre-title');
+    const tip = document.getElementById('pre-tip');
+    const fill = document.getElementById('pre-fill');
+    if (!el || !fill) { done(); return; }
+    if (title) title.textContent = REALMS[target]?.name.toUpperCase() ?? 'GET READY!';
+    if (tip) tip.textContent = Game.LEVEL_TIPS[target] ?? 'Here we go!';
+    el.classList.add('show');
+    fill.style.width = '0%';
+    let p = 0;
+    const tick = window.setInterval(() => {
+      p = Math.min(100, p + 7 + Math.random() * 16);
+      fill.style.width = `${p}%`;
+      if (p >= 100) {
+        window.clearInterval(tick);
+        window.setTimeout(() => { el.classList.remove('show'); done(); }, 160);
+      }
+    }, 70);
+  }
+
   private enterPortal(target: number) {
     if (this.transitioning || target === this.realm) return;
     this.transitioning = true;
@@ -1270,8 +1313,8 @@ export class Game {
     this.juice.ring(s.x, s.y, 0xbffff0, 200);
     const overlay = document.getElementById('transition');
     if (overlay) overlay.classList.add('active');
-    // Let the fade paint before the synchronous world rebuild, then fade back.
-    window.setTimeout(() => {
+    // Playful preloader covers the synchronous world rebuild — no hard cut.
+    this.showPreloader(target, () => {
       this.realm = target;
       this.buildWorld(target);
       this.portalCooldown = 1.5; // don't re-trigger a portal at the new spawn
@@ -1283,7 +1326,7 @@ export class Game {
       this.juice.floatText(sc.width / 2, sc.height / 2 - 60, REALMS[target].name.toUpperCase(), 0x9fffe0, 44);
       this.juice.radialBurst(sc.width / 2, sc.height / 2, 0x9fffe0, 26);
       this.transitioning = false;
-    }, 170);
+    });
   }
 
   private die() {
