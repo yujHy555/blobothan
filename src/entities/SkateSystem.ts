@@ -165,20 +165,6 @@ export class SkateSystem {
   private boostPads: BABYLON.Mesh[] = [];
   private checkpointX = 0;
 
-  // ---- GRAVITY LOOPS (sky-bar 360s, level 4) ----
-  // A loop is a parametric circle in the XY plane. The rider is pinned to the
-  // track while its normal force is positive; when centrifugal demand exceeds
-  // gravity (or the rider slows), it releases tangentially into normal air.
-  private loopPos = new BABYLON.Vector3(0, 0, 0);
-  private loopR = 9;
-  private loopAngle = 0;      // 0 = bottom, increases counter-clockwise
-  private loopSpeed = 0;
-  private inLoop = false;
-  private loopCooldown = 0;
-  private loopMeshes: BABYLON.Mesh[] = [];
-  private static readonly LOOP_SPACING = 420;
-  private static readonly LOOP_FIRST_X = 300;
-
   private courseSeg(x: number) {
     const P = 160;
     return ((x % P) + P) % P;
@@ -197,18 +183,6 @@ export class SkateSystem {
     return (this.endlessY(x + 0.25) - this.endlessY(x - 0.25)) / 0.5;
   }
 
-  // Nearest loop centre ahead of/behind x, or null if none in this section.
-  private loopCenterFor(x: number) {
-    const S = SkateSystem.LOOP_SPACING, first = SkateSystem.LOOP_FIRST_X;
-    if (x < first - 40) return null;
-    const k = Math.max(0, Math.round((x - first) / S));
-    const cx = first + k * S;
-    return { x: cx, y: this.endlessY(cx) + this.loopR, r: this.loopR };
-  }
-  // Point + tangent on a loop at angle (0 = bottom, CCW).
-  private loopPoint(c: { x: number; y: number; r: number }, a: number) {
-    return { x: c.x + c.r * Math.sin(a), y: c.y - c.r * Math.cos(a) };
-  }
   private isGap(x: number) { if (x < 160) return false; const s = this.courseSeg(x); return s >= 60 && s < 76; }
   /** Height of the nearest solid ground — never returns a gap's -1000 void. */
   private nearestSolidY(x: number) {
@@ -328,38 +302,6 @@ export class SkateSystem {
     }
   }
 
-  /** Build the sky-bar gravity loops (360° tubes) around the rider. */
-  private buildLoops(center: number) {
-    for (const m of this.loopMeshes) m.dispose();
-    this.loopMeshes = [];
-    const S = SkateSystem.LOOP_SPACING, first = SkateSystem.LOOP_FIRST_X;
-    const k0 = Math.max(0, Math.floor((center - 220 - first) / S));
-    const k1 = Math.floor((center + 1400 - first) / S);
-    for (let k = k0; k <= k1; k++) {
-      const cx = first + k * S;
-      const cy = this.endlessY(cx) + this.loopR;
-      const ring = BABYLON.MeshBuilder.CreateTorus('skyLoop', {
-        diameter: this.loopR * 2, thickness: 0.7, tessellation: 40,
-      }, this.scene);
-      ring.position.set(cx, cy, 0);
-      const lm = new BABYLON.PBRMaterial('skyLoopMat', this.scene);
-      lm.albedoColor = new BABYLON.Color3(0.28, 0.55, 0.62);
-      lm.metallic = 0.6; lm.roughness = 0.35;
-      lm.emissiveColor = new BABYLON.Color3(0.08, 0.3, 0.34);
-      ring.material = lm;
-      ring.isPickable = false;
-      this.loopMeshes.push(ring);
-      // Glowing guide strip around the inside of the loop.
-      const glow = BABYLON.MeshBuilder.CreateTorus('skyLoopGlow', {
-        diameter: this.loopR * 2 - 1.2, thickness: 0.18, tessellation: 40,
-      }, this.scene);
-      glow.position.set(cx, cy, 0);
-      glow.material = this.mats.glow('skyLoopGlowMat', [0.35, 1.0, 0.95], 0.75);
-      glow.isPickable = false;
-      this.loopMeshes.push(glow);
-    }
-  }
-
   /** Build/rebuild the scrolling endless track around the rider. */
   private buildEndlessTrack(initial = false) {
     const s = this.scene;
@@ -369,10 +311,9 @@ export class SkateSystem {
       if (m.name.startsWith('endlessTrack') || m.name.startsWith('endlessGrid') ||
           m.name.startsWith('endlessRail') || m.name.startsWith('gapGate') ||
           m.name.startsWith('boostPad') || m.name.startsWith('courseArch') ||
-          m.name.startsWith('skyLoop') || m.name.startsWith('startLine')) m.dispose();
+          m.name.startsWith('startLine')) m.dispose();
     });
     this.boostPads = [];
-    this.buildLoops(center);
     // One long, densely-segmented track — no rebuild pops in view.
     const x0 = center - 220, x1 = center + 1400, N = 480;
     const paths: BABYLON.Vector3[][] = [];
@@ -747,85 +688,16 @@ export class SkateSystem {
   }
 
   // ------------------------------------------------------------------ endless physics
-  /**
-   * Gravity-loop physics. Returns true while attached to a loop (the caller
-   * then skips the normal ground/air integrator). Centrifugal release happens
-   * when the normal force would go negative — the rider is flung tangentially.
-   */
-  private updateLoop(dt: number): boolean {
-    if (this.loopCooldown > 0) this.loopCooldown -= dt;
-    if (this.inLoop) {
-      const c = this.loopCenterFor(this.x);
-      if (!c) { this.inLoop = false; return false; }
-      // Tangential gravity: climbing the right side slows, descending speeds.
-      const sinA = Math.sin(this.loopAngle);
-      this.loopSpeed += (-this.endlessGravity * sinA - this.loopSpeed * 0.06) * dt;
-      this.loopAngle += (this.loopSpeed / this.loopR) * dt;
-      // Normal force toward centre = v²/R + g·cos(angle-from-top-ish).
-      // Release when it can no longer hold the rider against the track.
-      const centripetal = this.loopSpeed * this.loopSpeed / this.loopR;
-      const gravitySupport = this.endlessGravity * Math.cos(this.loopAngle);
-      if (centripetal < -gravitySupport && this.loopAngle > 0.35) {
-        // Centrifugal/inertia release — launch along the tangent.
-        const px = c.x + c.r * Math.sin(this.loopAngle);
-        const py = c.y - c.r * Math.cos(this.loopAngle);
-        this.x = px; this.y = py;
-        this.vx = this.loopSpeed * Math.cos(this.loopAngle);
-        this.vy = this.loopSpeed * Math.sin(this.loopAngle);
-        this.speed = Math.hypot(this.vx, this.vy);
-        this.inLoop = false; this.onGround = false; this.isAirborne = true;
-        this.loopCooldown = 0.7;
-        this.beginAir();
-        this.addTrick('LOOP RELEASE!', 900);
-        this.cb.onTrick?.('LOOP RELEASE!', 900, this.x, this.y);
-        return false;
-      }
-      if (this.loopAngle >= Math.PI * 2) {
-        // Full 360° — exit at the bottom, back onto the track.
-        this.x = c.x; this.y = this.endlessY(c.x) + 0.05;
-        this.speed = this.loopSpeed;
-        this.vx = this.speed; this.vy = 0;
-        this.inLoop = false; this.onGround = true; this.isAirborne = false;
-        this.loopCooldown = 0.6;
-        this.addTrick('360 LOOP!', 1400);
-        this.gForce = 1 + centripetal / this.endlessGravity;
-        return false;
-      }
-      const p = this.loopPoint(c, this.loopAngle);
-      this.x = p.x; this.y = p.y;
-      this.vx = this.loopSpeed * Math.cos(this.loopAngle);
-      this.vy = this.loopSpeed * Math.sin(this.loopAngle);
-      this.gForce = 1 + centripetal / this.endlessGravity;
-      this.speed = this.loopSpeed;
-      this.syncPosition();
-      return true;
-    }
-    // Entry: approaching a loop on the ground with enough speed.
-    if (this.loopCooldown <= 0 && this.onGround) {
-      const c = this.loopCenterFor(this.x);
-      if (c) {
-        const entryX = c.x - c.r * 0.25;
-        if (this.x >= entryX - 1.5 && this.x <= entryX + 2.5 && Math.abs(this.speed) >= 16) {
-          this.inLoop = true;
-          this.loopSpeed = Math.abs(this.speed);
-          this.loopAngle = 0;
-          this.beginAir();
-          this.addTrick('360 LOOP!', 700);
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
   private updateEndless(dt: number, input: InputState) {
     this.inputTurnLeft = input.rotLeft; this.inputTurnRight = input.rotRight;
-    if (this.updateLoop(dt)) { this.updateVisuals(dt, this.speed, false); return; }
     this.updateHandPlant(dt, input);
     if (this.handPlanting) { this.updateVisuals(dt, 0, false); this.syncPosition(); return; }
     this.time += dt;
     if (this.jumpStretch > 0) this.jumpStretch = Math.max(0, this.jumpStretch - dt * 1.6);
     if (this.squash !== 0) this.squash = Math.abs(this.squash) < 0.01 ? 0 : this.squash * Math.pow(0.02, dt);
+    // Ease G-force back to rest so the body never stays squashed after a
+    // high-G moment (hard landing / boost). Keeps the character shape clean.
+    this.gForce += (1 - this.gForce) * Math.min(1, dt * 4);
     const steer = input.axisX || 0;
     const CAP = this.maxSpeed * 1.5;
     if (this.airJumpCooldown > 0) this.airJumpCooldown -= dt;
@@ -949,8 +821,10 @@ export class SkateSystem {
       if (!landed) this.updateTricks(dt, input);
       // Absolute hard floor — the skater can NEVER fall into the -1000 void
       if (this.y < -12) {
-        this.y = this.nearestSolidY(this.x) - 2;
-        this.vy = 16;
+        // Gentle arcade save — place the rider just above the solid surface
+        // with mild upward velocity so the camera follow doesn't snap hard.
+        this.y = this.nearestSolidY(this.x) + 0.4;
+        this.vy = 8;
         if (this.saveCooldown <= 0) {
           this.saveCooldown = 1.2;
           this.cb.onSave?.(this.x, this.y);
@@ -1516,7 +1390,7 @@ export class SkateSystem {
           m.name.startsWith('endlessTrack') || m.name.startsWith('endlessGrid') ||
           m.name.startsWith('endlessRail') || m.name.startsWith('gapGate') ||
           m.name.startsWith('boostPad') || m.name.startsWith('courseArch') ||
-          m.name.startsWith('skyLoop') || m.name.startsWith('startLine')) m.dispose();
+          m.name.startsWith('startLine')) m.dispose();
     });
     this.scene.lights.slice().forEach((l) => {
       if (l.name === 'pipeLamp' || l.name === 'plantLight') l.dispose();

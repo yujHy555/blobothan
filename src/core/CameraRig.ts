@@ -123,25 +123,23 @@ export class CameraRig {
     this.camera.fov += (this.baseFov - this.camera.fov) * Math.min(1, dt * 5);
     this.camera.rotation.z += (0 - this.camera.rotation.z) * Math.min(1, dt * 5);
 
-    // Trauma shake (squared falloff)
+    // Shake + handheld drift are RENDER-ONLY offsets — never written into the
+    // spring state. Writing them into _position made them accumulate and fight
+    // the follow on falls (the camera "freaked out" when the rider got saved).
+    let ox = 0, oy = 0;
     if (this.shakeTime > 0) {
       this.shakeTime = Math.max(0, this.shakeTime - dt);
       const f = this.shakeTime * this.shakeAmp * 0.12;
-      this._position.x += (Math.random() - 0.5) * f;
-      this._position.y += (Math.random() - 0.5) * f;
+      ox += (Math.random() - 0.5) * f;
+      oy += (Math.random() - 0.5) * f;
       if (this.shakeTime === 0) this.shakeAmp = 0;
     }
-
-    // Subtle handheld/cinematic drift for the endless level-4 park — a tiny,
-    // bounded sway that sells the parallax depth without motion sickness.
     if (this.skateMode) {
       this.t += dt;
-      this._position.x += Math.sin(this.t * 0.7) * 0.12;
-      this._position.y += Math.sin(this.t * 1.1 + 1.3) * 0.09;
-      this.camera.rotation.z += Math.sin(this.t * 0.53) * 0.004;
+      ox += Math.sin(this.t * 0.7) * 0.12;
+      oy += Math.sin(this.t * 1.1 + 1.3) * 0.09;
     }
-
-    this.camera.position = this._position;
+    this.camera.position.set(this._position.x + ox, this._position.y + oy, this._position.z);
     this.camera.setTarget(new BABYLON.Vector3(focusX, focusY, 0));
   }
 

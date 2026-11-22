@@ -432,6 +432,18 @@ export function pipeStrip(scene: BABYLON.Scene, seed: number, top: boolean): Car
     corrugated(ctx, sx, cy - R - 34, 14, 40, true, rand);
     ctx.fillStyle = css(KRAFT_D); ctx.fillRect(sx - 16, cy - R - 6, 46, 10);
     moss(ctx, sx + 6, cy - R - 34, rand, 0.9);
+    // Tiny pennant flags strung along the top of the foreground pipe run.
+    if (top) {
+      ctx.strokeStyle = css(INK, 0.6); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(sx - 20, cy - R - 40); ctx.lineTo(sx + 170, cy - R - 40); ctx.stroke();
+      const flagCols = [css([0.45, 0.72, 0.6]), css([0.82, 0.46, 0.36]), css(CREAM)];
+      for (let f = 0; f < 9; f++) {
+        const fx = sx - 16 + f * 20;
+        const fy = cy - R - 40 + Math.sin(f * 0.5) * 3;
+        ctx.fillStyle = flagCols[f % 3];
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + 14, fy); ctx.lineTo(fx + 7, fy + 14); ctx.closePath(); ctx.fill();
+      }
+    }
   }
   paperFinish(ctx, W, H, rand, 1.0);
   return { albedo: texFrom(cv, scene), normal: texFrom(normalFrom(cv, 2.6), scene) };

@@ -15,11 +15,10 @@ export class CardboardTownParallax {
   private layers: { tiles: BABYLON.Mesh[]; tileWidth: number; speed: number }[] = [];
   private disposables: BABYLON.Material[] = [];
   private textures: BABYLON.Texture[] = [];
-  private clouds: BABYLON.Mesh[] = [];
   private skyMesh!: BABYLON.Mesh;
   private t = 0;
 
-  constructor(scene: BABYLON.Scene, centerX: number, accent: RGB) {
+  constructor(scene: BABYLON.Scene, centerX: number, _accent: RGB) {
     this.scene = scene;
     this.centerX = centerX;
 
@@ -41,7 +40,8 @@ export class CardboardTownParallax {
     this.addLayer('mid', 144, 0.3, 95, mid, 1.0, 54, 28);
     this.addLayer('near', 160, 0.58, 50, near, 1.12, 60, 22);
 
-    this.cloudsAndMotes(accent);
+    // No floating sky objects (clouds/motes) — the sky stays clean so nothing
+    // drifts through the parallax on the endless level.
   }
 
   private images: CardboardImage[] = [];
@@ -108,47 +108,8 @@ export class CardboardTownParallax {
     this.layers.push({ tiles, tileWidth, speed });
   }
 
-  /** A few textured cloud puffs + motes (still planes/boxes, no modelling). */
-  private cloudsAndMotes(accent: RGB) {
-    const W = 256, H = 128;
-    const cv = document.createElement('canvas');
-    cv.width = W; cv.height = H;
-    const ctx = cv.getContext('2d')!;
-    ctx.clearRect(0, 0, W, H);
-    const g = ctx.createRadialGradient(W / 2, H / 2, 4, W / 2, H / 2, W / 2);
-    g.addColorStop(0, 'rgba(255,246,232,0.85)');
-    g.addColorStop(1, 'rgba(255,246,232,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(W / 2, H / 2, H * 0.42, 0, Math.PI * 2); ctx.fill();
-    const tex = new BABYLON.Texture(cv.toDataURL(), this.scene, false, true);
-    tex.hasAlpha = true;
-    this.textures.push(tex);
-    const mat = new BABYLON.StandardMaterial('cbCloud', this.scene);
-    mat.diffuseTexture = tex;
-    mat.emissiveTexture = tex;
-    mat.opacityTexture = tex;
-    (mat.opacityTexture as BABYLON.Texture).getAlphaFromRGB = false;
-    mat.useAlphaFromDiffuseTexture = true;
-    mat.diffuseColor = BABYLON.Color3.Black();
-    mat.disableLighting = true;
-    mat.backFaceCulling = false;
-    mat.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND;
-    this.disposables.push(mat);
-    for (let i = 0; i < 8; i++) {
-      const cloud = BABYLON.MeshBuilder.CreatePlane('cbCloud', { width: 34, height: 17 }, this.scene);
-      cloud.position.set(this.centerX - 240 + i * 62, 52 + (i % 3) * 12, 120 + (i % 2) * 30);
-      cloud.material = mat;
-      cloud.isPickable = false;
-      (cloud as any)._drift = i;
-      this.clouds.push(cloud);
-      this.layers.push({ tiles: [cloud], tileWidth: 1000, speed: 0.06 });
-    }
-    void accent;
-  }
-
   public update(dt: number) {
     this.t += dt;
-    for (const c of this.clouds) c.position.y += Math.sin(this.t * 0.3 + (c as any)._drift) * dt * 0.25;
   }
 
   public scroll(camX: number) {
@@ -173,6 +134,5 @@ export class CardboardTownParallax {
     for (const m of this.disposables) m.dispose();
     for (const t of this.textures) t.dispose();
     this.layers = [];
-    this.clouds = [];
   }
 }
