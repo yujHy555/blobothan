@@ -1,5 +1,5 @@
 import * as BABYLON from 'babylonjs';
-import { cardboardTextures, RGB } from '../art/CardboardArt';
+import { cardboardTextures, toonGlassTexture, RGB } from '../art/CardboardArt';
 
 function mulberry32(seed: number) {
   let a = seed | 0;
@@ -44,6 +44,7 @@ export class BuildingParallax {
   private disposables: BABYLON.Material[] = [];
   private textures: BABYLON.Texture[] = [];
   private lights: BABYLON.Light[] = [];
+  private shadows: BABYLON.ShadowGenerator | null = null;
   private ready = false;
 
   constructor(scene: BABYLON.Scene, centerX: number, _accent: RGB) {
@@ -104,16 +105,30 @@ export class BuildingParallax {
   /** AAA studio lighting: warm key, cool fill and a golden rim, all restricted
    *  to the building meshes so they never wash out the rest of the scene. */
   private studioLights(meshes: BABYLON.AbstractMesh[]) {
-    const key = new BABYLON.DirectionalLight('bldKey', new BABYLON.Vector3(-0.5, -0.8, 0.45), this.scene);
-    key.position = new BABYLON.Vector3(60, 120, -40);
-    key.intensity = 1.05;
-    key.diffuse = new BABYLON.Color3(1.0, 0.9, 0.78);
-    const fill = new BABYLON.DirectionalLight('bldFill', new BABYLON.Vector3(0.6, -0.3, -0.7), this.scene);
-    fill.intensity = 0.7;
-    fill.diffuse = new BABYLON.Color3(0.6, 0.78, 1.0);
-    const rim = new BABYLON.DirectionalLight('bldRim', new BABYLON.Vector3(0.2, -0.5, 0.85), this.scene);
-    rim.intensity = 1.1;
-    rim.diffuse = new BABYLON.Color3(1.0, 0.7, 0.4);
+    // Warm key from upper-left/front with soft PCF shadows — real depth, not
+    // the flat self-lit look. Shadow map is small & frozen (static backdrop).
+    const key = new BABYLON.DirectionalLight('bldKey', new BABYLON.Vector3(-0.55, -0.8, 0.5), this.scene);
+    key.position = new BABYLON.Vector3(70, 120, -55);
+    key.intensity = 1.25;
+    key.diffuse = new BABYLON.Color3(1.0, 0.88, 0.72);
+    const shadows = new BABYLON.ShadowGenerator(1024, key);
+    shadows.usePercentageCloserFiltering = true;
+    shadows.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
+    shadows.setDarkness(0.35);
+    shadows.bias = 0.0015;
+    shadows.normalBias = 0.02;
+    this.shadows = shadows;
+    for (const m of meshes) shadows.addShadowCaster(m);
+    key.autoUpdateExtends = false;
+    key.orthoLeft = -140; key.orthoRight = 140;
+    key.orthoTop = 80; key.orthoBottom = -20;
+    // Cool bounce fill from the right + a golden rim behind.
+    const fill = new BABYLON.DirectionalLight('bldFill', new BABYLON.Vector3(0.7, -0.25, -0.65), this.scene);
+    fill.intensity = 0.75;
+    fill.diffuse = new BABYLON.Color3(0.58, 0.76, 1.0);
+    const rim = new BABYLON.DirectionalLight('bldRim', new BABYLON.Vector3(0.15, -0.45, 0.9), this.scene);
+    rim.intensity = 1.0;
+    rim.diffuse = new BABYLON.Color3(1.0, 0.62, 0.38);
     for (const l of [key, fill, rim]) {
       l.includedOnlyMeshes = meshes;
       this.lights.push(l);
@@ -161,14 +176,20 @@ export class BuildingParallax {
         const leafMat = this.pbr('bldLeaf', [0.42, 0.66, 0.4], 349, 0.92);
         // Warm emissive window material (cozy occupied interiors).
         // Only a FEW windows are warmly lit — most stay dark for contrast.
+        // Toon fake-glass windows — baked paint, no refraction cost.
+        const glassTex = toonGlassTexture(this.scene, false);
+        const glassLitTex = toonGlassTexture(this.scene, true);
+        this.textures.push(glassTex, glassLitTex);
         const win = new BABYLON.StandardMaterial('bldWindow', this.scene);
-        win.diffuseColor = new BABYLON.Color3(0.12, 0.13, 0.16);
-        win.emissiveColor = new BABYLON.Color3(0.16, 0.17, 0.2);
+        win.diffuseTexture = glassTex;
+        win.emissiveTexture = glassTex;
+        win.emissiveColor = new BABYLON.Color3(0.22, 0.26, 0.3);
         win.disableLighting = true;
         this.disposables.push(win);
         const winLit = new BABYLON.StandardMaterial('bldWindowLit', this.scene);
-        winLit.diffuseColor = BABYLON.Color3.Black();
-        winLit.emissiveColor = new BABYLON.Color3(1.0, 0.78, 0.42);
+        winLit.diffuseTexture = glassLitTex;
+        winLit.emissiveTexture = glassLitTex;
+        winLit.emissiveColor = new BABYLON.Color3(0.9, 0.72, 0.42);
         winLit.disableLighting = true;
         this.disposables.push(winLit);
 
@@ -291,6 +312,7 @@ export class BuildingParallax {
   public dispose() {
     if (this.layer) for (const t of this.layer.tiles) t.dispose(false, true);
     for (const l of this.lights) l.dispose();
+    if (this.shadows) { this.shadows.dispose(); this.shadows = null; }
     for (const m of this.disposables) m.dispose();
     for (const t of this.textures) t.dispose();
   }

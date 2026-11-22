@@ -283,7 +283,7 @@ export class SkateSystem {
     }
     for (const z of [-this.depth / 2 + 0.4, 0, this.depth / 2 - 0.4]) {
       const line: BABYLON.Vector3[] = [];
-      for (const x of xs) line.push(new BABYLON.Vector3(x, this.surfaceY(x) + 0.09, z));
+      for (const x of xs) line.push(new BABYLON.Vector3(x, this.surfaceY(x) + 0.15, z));
       gridLines.push(line);
     }
     const grid = BABYLON.MeshBuilder.CreateLineSystem('pipeGrid', { lines: gridLines }, s);
@@ -397,21 +397,29 @@ export class SkateSystem {
     for (let x = Math.ceil(x0 / 4) * 4; x < x1; x += 4) {
       if (this.isGap(x)) continue;
       const y = this.endlessY(x);
-      lines.push([new BABYLON.Vector3(x, y + 0.06, -this.depth / 2 + 0.1), new BABYLON.Vector3(x, y + 0.06, this.depth / 2 - 0.1)]);
+      // Lift clear of the track surface to prevent z-fighting shimmer.
+      lines.push([new BABYLON.Vector3(x, y + 0.14, -this.depth / 2 + 0.1), new BABYLON.Vector3(x, y + 0.14, this.depth / 2 - 0.1)]);
     }
     const grid = BABYLON.MeshBuilder.CreateLineSystem('endlessGrid', { lines }, s);
-    grid.color = new BABYLON.Color3(0.3, 0.9, 1.0); grid.alpha = 0.38;
+    grid.color = new BABYLON.Color3(0.3, 0.9, 1.0); grid.alpha = 0.3;
 
-    // Continuous neon side rails frame the track and hide its edges.
+    // Continuous neon side rails — thin SOLID ribbons instead of 1px lines.
+    // LinesMesh rails shimmer/flicker when the camera moves sub-pixel amounts;
+    // a real ribbon antialiases cleanly and reads as a crafted edge.
+    const railMat = this.mats.glow('endlessRailMat', [0.25, 0.95, 1.0], 0.82);
     for (const sz of [-1, 1]) {
-      const rail: BABYLON.Vector3[] = [];
+      const lower: BABYLON.Vector3[] = [], upper: BABYLON.Vector3[] = [];
       for (let i = 0; i <= N; i++) {
         const x = x0 + (x1 - x0) * (i / N);
         const y = this.isGap(x) ? -6 : this.endlessY(x);
-        rail.push(new BABYLON.Vector3(x, y + 0.22, sz * (this.depth / 2 - 0.1)));
+        const z = sz * (this.depth / 2 - 0.1);
+        lower.push(new BABYLON.Vector3(x, y + 0.2, z));
+        upper.push(new BABYLON.Vector3(x, y + 0.52, z));
       }
-      const r = BABYLON.MeshBuilder.CreateLines('endlessRail', { points: rail }, s);
-      r.color = new BABYLON.Color3(0.25, 0.95, 1.0); r.alpha = 0.8;
+      const r = BABYLON.MeshBuilder.CreateRibbon('endlessRail',
+        { pathArray: [lower, upper], sideOrientation: BABYLON.Mesh.DOUBLESIDE }, s);
+      r.material = railMat;
+      r.isPickable = false;
     }
 
     // Gap gates — glowing pink portals that clearly mark the jump zones.

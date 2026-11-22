@@ -257,6 +257,44 @@ function texFrom(cv: HTMLCanvasElement, scene: BABYLON.Scene) {
 }
 export interface CardboardImage { albedo: BABYLON.Texture; normal: BABYLON.Texture; emissive?: BABYLON.Texture; }
 
+/** Toon fake-glass: painted blue-teal panes with bold white cartoon highlights,
+ *  a soft interior glow and a dark frame. Baked to a canvas texture — zero
+ *  refraction cost, reads as hand-crafted glass at any distance. */
+export function toonGlassTexture(scene: BABYLON.Scene, lit: boolean): BABYLON.Texture {
+  const S = 128;
+  const cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const ctx = cv.getContext('2d')!;
+  // Pane base
+  const g = ctx.createLinearGradient(0, 0, S, S);
+  if (lit) {
+    g.addColorStop(0, '#ffe6a0'); g.addColorStop(0.5, '#f2a94e'); g.addColorStop(1, '#c9662e');
+  } else {
+    g.addColorStop(0, '#4a90b8'); g.addColorStop(0.5, '#2a5f86'); g.addColorStop(1, '#16384f');
+  }
+  ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
+  // Bold toon diagonal shine strips
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(38, 0); ctx.lineTo(6, S); ctx.lineTo(0, S); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.28)';
+  ctx.beginPath(); ctx.moveTo(52, 0); ctx.lineTo(66, 0); ctx.lineTo(34, S); ctx.lineTo(20, S); ctx.closePath(); ctx.fill();
+  // Warm interior paper glow in the lower corner
+  if (lit) {
+    const rg = ctx.createRadialGradient(S * 0.72, S * 0.7, 2, S * 0.72, S * 0.7, S * 0.6);
+    rg.addColorStop(0, 'rgba(255,240,180,0.55)'); rg.addColorStop(1, 'rgba(255,240,180,0)');
+    ctx.fillStyle = rg; ctx.fillRect(0, 0, S, S);
+  }
+  // Painted mullions + dark frame
+  ctx.fillStyle = 'rgba(20,26,32,0.85)';
+  ctx.fillRect(S / 2 - 3, 0, 6, S); ctx.fillRect(0, S / 2 - 3, S, 6);
+  ctx.lineWidth = 8; ctx.strokeStyle = '#2a2018'; ctx.strokeRect(0, 0, S, S);
+  // Corner rivets
+  ctx.fillStyle = '#d8c8a8';
+  for (const [x, y] of [[10, 10], [S - 10, 10], [10, S - 10], [S - 10, S - 10]]) {
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+  }
+  return texFrom(cv, scene);
+}
+
 /** Standalone kraft cardboard albedo + normal pair, used by 3D reskinning. */
 export function cardboardTextures(scene: BABYLON.Scene, key: string, base: RGB, seed: number) {
   const W = 512, H = 512;
